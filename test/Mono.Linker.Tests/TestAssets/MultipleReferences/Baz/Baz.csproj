@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard1.3</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Baz.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Foo\Foo.csproj" />
+    <ProjectReference Include="..\Bar\Bar.csproj" />
+    <ProjectReference Include="..\NotLinkedAttribute\NotLinkedAttribute.csproj" />
+  </ItemGroup>
+  
+</Project>

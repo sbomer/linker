@@ -1,0 +1,112 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<!--  <Import Project="NetCore.props" Condition=" $(Configuration.StartsWith('netcore')) " /> -->
+  <PropertyGroup>
+    <OutputType>exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <RuntimeFrameworkVersion>2.0.0-beta-001509-00</RuntimeFrameworkVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="UnitTestsBase.cs" />
+    <Compile Include="UnitTests.cs" />
+    <Compile Include="XmlUnitTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.0.0-preview-20170123-02" />
+    <PackageReference Include="xunit" Version="2.2.0-beta5-build3474" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.2.0-beta5-build1225" />
+    
+    <ProjectReference Include="..\..\cecil\Mono.Cecil.csproj">
+      <SetConfiguration Condition=" '$(Configuration)' == 'Debug'">Configuration=netstandard_Debug</SetConfiguration>
+      <SetConfiguration Condition=" '$(Configuration)' == 'Release'">Configuration=netstandard_Release</SetConfiguration>
+    </ProjectReference>
+    <ProjectReference Include="..\..\linker\Mono.Linker.csproj">
+      <SetConfiguration Condition=" '$(Configuration)' == 'Debug' ">Configuration=netcore_Debug</SetConfiguration>
+      <SetConfiguration Condition=" '$(Configuration)' == 'Release' ">Configuration=netcore_Release</SetConfiguration>
+    </ProjectReference>
+  </ItemGroup>
+
+
+  <!-- copy test sources to output directory -->
+  <ItemGroup>
+    
+    <!-- unit tests -->
+
+    <!-- resolve from assembly -->
+    <Content Include="TestAssets\Simple\Program\Program.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Simple\Program\Program.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Simple\Library\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Simple\Library\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\VirtualCall\Program\Program.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\VirtualCall\Program\Program.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\VirtualCall\Library\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\VirtualCall\Library\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\MultipleReferences\Program\Program.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Program\Program.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Foo\Foo.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Foo\Foo.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Bar\Bar.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Bar\Bar.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Baz\Baz.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\Baz\Baz.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\NotLinkedAttribute\NotLinkedAttribute.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\MultipleReferences\NotLinkedAttribute\NotLinkedAttribute.csproj" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- resolve from xml -->
+    <Content Include="TestAssets\SimpleXml\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\SimpleXml\Library.csproj" CopyToOutputDirectory="PreserveNewest" /> 
+    <Content Include="TestAssets\SimpleXml\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\Interface\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Interface\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Interface\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\ReferenceInVirtualMethod\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\ReferenceInVirtualMethod\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\ReferenceInVirtualMethod\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\Generics\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Generics\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\Generics\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\NestedNested\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\NestedNested\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\NestedNested\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\PreserveFieldsRequired\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\PreserveFieldsRequired\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\PreserveFieldsRequired\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+    
+    <Content Include="TestAssets\XmlPattern\Library.cs" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\XmlPattern\Library.csproj" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TestAssets\XmlPattern\desc.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- build the unit test projects in the output directory -->
+  <ItemGroup>
+    <NestedUnitTestProjects Include="Simple\Program\Program.csproj" />
+    <NestedUnitTestProjects Include="VirtualCall\Program\Program.csproj" />
+    <NestedUnitTestProjects Include="MultipleReferences\Program\Program.csproj" />
+
+    <UnitTestProjects Include="SimpleXml\Library.csproj" />
+    <UnitTestProjects Include="Interface\Library.csproj" />
+    <UnitTestProjects Include="ReferenceInVirtualMethod\Library.csproj" />
+    <UnitTestProjects Include="Generics\Library.csproj" />
+    <UnitTestProjects Include="NestedNested\Library.csproj" />
+    <UnitTestProjects Include="PreserveFieldsRequired\Library.csproj" />
+    <UnitTestProjects Include="XmlPattern\Library.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TestRid>ubuntu.16.04-x64</TestRid>
+  </PropertyGroup>
+  
+  <Target Name="CompileUnitTests" AfterTargets="Build">
+    <MSBuild Projects="@(NestedUnitTestProjects -> '$(OutputPath)TestAssets\%(identity)')" Targets="Restore;Publish" Properties="PublishDir=../publish;RuntimeIdentifier=$(TestRid)" />
+    <MSBuild Projects="@(UnitTestProjects -> '$(OutputPath)TestAssets\%(identity)')" Targets="Restore;Publish" Properties="PublishDir=./publish;RuntimeIdentifier=$(TestRid)" />
+    </Target>
+</Project>
