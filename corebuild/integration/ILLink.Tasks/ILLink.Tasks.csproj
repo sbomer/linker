@@ -43,7 +43,7 @@
     <!-- TODO: Remove the custom .nuspec once the P2P PrivateAssets
          issue is fixed. -->
    <NuspecFile>ILLink.Tasks.nuspec</NuspecFile>
-    <NuspecProperties>id=$(AssemblyName);authors=$(AssemblyName);description=linker tasks;tfm=$(TargetFramework);</NuspecProperties>
+    <NuspecProperties>id=$(AssemblyName);authors=$(AssemblyName);description=linker tasks;</NuspecProperties>
   </PropertyGroup>
   
   <PropertyGroup Condition=" $(Configuration.EndsWith('Debug')) ">
@@ -93,67 +93,62 @@
        Instead, we use GenerateNuspecDependsOn. We could probably also
        use BeforeTargets="GenerateNuspec". -->
   <PropertyGroup>
-    <GenerateNuspecDependsOn>ShowConfig;SetDynamicNuspecProperties;$(GenerateNuspecDependsOn)</GenerateNuspecDependsOn>
+    <GenerateNuspecDependsOn>SetDynamicNuspecProperties;$(GenerateNuspecDependsOn)</GenerateNuspecDependsOn>
   </PropertyGroup>
   <Target Name="SetDynamicNuspecProperties"
           DependsOnTargets="LayoutPackage">
     <PropertyGroup>
-      <NuspecProperties>$(NuspecProperties)output=$(PublishDir);version=$(Version);</NuspecProperties>
+      <NuspecProperties>$(NuspecProperties)packageDir=$(PackageDirWithAllTFMs);version=$(Version);</NuspecProperties>
     </PropertyGroup>
   </Target>
 
   <Target Name="LayoutPackage"
           DependsOnTargets="PublishForAllTargetFrameworks">
-    <Message Text="PublishDir: $(PublishDir)" />
-  </Target>
-
-  <Target Name="ShowConfig"
-          BeforeTargets="Pack">
-    <Message Text="showconfig" />
-    <Message Text="Configuration: $(Configuration)" />
-    <Message Text="Configurations: @(Configurations)" />
+    <ItemGroup>
+      <PublishDlls Include="$(PublishDirWithAllTFMs)/**/*.dll" />
+    </ItemGroup>
+    <PropertyGroup>
+      <PackageDirWithAllTFMs>packageTFMs</PackageDirWithAllTFMs>
+    </PropertyGroup>
+    <ItemGroup>
+      <PackageDlls Include="$(PackageDirWithAllTFMs)/%(PublishDlls.RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PublishDlls)" DestinationFiles="@(PackageDlls)" />
   </Target>
   
   <Target Name="PublishForAllTargetFrameworks">
-    <Message Text="publishforalltargetframeworks" />
-    <Message Text="thisproject: $(MSBuildProjectFile)" />
+    <PropertyGroup>
+      <PublishDirWithAllTFMs>publishTFMs</PublishDirWithAllTFMs>
+    </PropertyGroup>
     <ItemGroup>
+      <TFMsToPublish Include="netcoreapp2.0">
+        <Id>1</Id>
+      </TFMsToPublish>
       <!--
       <TFMsToPublish Include="net46_Debug">
-        <Id>1</Id>
-      </TFMsToPublish>
-        -->
-      <TFMsToPublish Include="netcoreapp2.0">
         <Id>2</Id>
-      </TFMsToPublish>
+        </TFMsToPublish>
+      -->
     </ItemGroup>
-    <Message Text="tfms: $(TargetFrameworks)" />
-    <Message Text="each tfm: %(TFMsToPublish.Identity)" />
     <ItemGroup>
+      <ConfigsToPublish Include="netcore_Debug">
+        <Id>1</Id>
+      </ConfigsToPublish>
       <!--
       <ConfigsToPublish Include="net46_Debug">
-        <Id>1</Id>
-      </ConfigsToPublish>
-      -->
-      <ConfigsToPublish Include="netcore_Debug">
         <Id>2</Id>
-      </ConfigsToPublish>
+        </ConfigsToPublish>
+      -->
     </ItemGroup>
     <ItemGroup>
       <ProjectsToPublish Include="$(MSBuildProjectFile)">
         <PublishId>%(Id)</PublishId>
-        <AdditionalProperties>Configuration=@(ConfigsToPublish);TargetFramework=@(TFMsToPublish);PublishDir=publishLayout/@(TFMsToPublish)</AdditionalProperties>
+        <AdditionalProperties>Configuration=@(ConfigsToPublish);TargetFramework=@(TFMsToPublish);PublishDir=$(PublishDirWithAllTFMs)/@(TFMsToPublish)</AdditionalProperties>
       </ProjectsToPublish>
     </ItemGroup>
-    <Message Text="each config: %(ConfigsToPublish.Identity)" />
-    <Message Text="MSBuild Properties: PublishDir=@(TFMsToPublish);Configuration=@(ConfigsToPublish);_ConfigId=%(Id)" />
-    <Message Text="id %(Id): config = @(ConfigsToPublish), tfm = @(TFMsToPublish)" />
-    <MSBuild Projects="@(ProjectsToPublish)"
-             Targets="Publish" />
+    <MSBuild Projects="@(ProjectsToPublish)" Targets="Publish" />
   </Target>
 
-  <Target Name="PublishForOneTargetFramework">
-  </Target>
   
   <ItemGroup>
     <Compile Include="LinkTask.cs" />
@@ -250,10 +245,10 @@
     <!-- We use private assets for the Microsoft.Build packages to
          prevent them from being published with the tasks dll, because
          these are already a part of the SDK. -->
-    <PackageReference Include="Microsoft.Build.Framework" Version="0.1.0-preview-00028-160627"
+    <PackageReference Include="Microsoft.Build.Framework" Version="15.1.1012"
                       PrivateAssets="All" />
-    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="0.1.0-preview-00028-160627"
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="15.1.1012"
                       PrivateAssets="All" />
-    <PackageReference Include="NuGet.ProjectModel" Version="4.3.0-preview1-2500" />
+    <PackageReference Include="NuGet.ProjectModel" Version="4.3.0-beta1-2418" />
   </ItemGroup>
 </Project>
