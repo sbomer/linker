@@ -3,6 +3,7 @@
   <PropertyGroup Condition=" $(Configuration.StartsWith('netcore')) ">
     <TargetFramework>netcoreapp2.0</TargetFramework>
   </PropertyGroup>
+
   <PropertyGroup Condition=" $(Configuration.StartsWith('net46')) ">
     <TargetFramework>net46</TargetFramework>
   </PropertyGroup>

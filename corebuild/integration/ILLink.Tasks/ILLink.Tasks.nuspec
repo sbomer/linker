@@ -8,6 +8,7 @@
   </metadata>
   <files>
     <file src="ILLink.Tasks.targets" target="build" />
-    <file src="$output$*.dll" target="tools/$tfm$" />
+    <file src="$output$*.dll" target="tools/$tfm1$" />
+    <file src="$output$*.dll" target="tools/$tfm2$" />
   </files>
 </package>

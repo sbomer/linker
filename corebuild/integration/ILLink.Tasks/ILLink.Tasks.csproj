@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-   <PropertyGroup>
+  <PropertyGroup>
     <VersionPrefix>0.1.5-preview</VersionPrefix>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
     <TargetFrameworks>netcoreapp2.0;net46</TargetFrameworks>
     <RuntimeFrameworkVersion>2.0.0-beta-001509-00</RuntimeFrameworkVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
@@ -17,7 +18,7 @@
 
     <!-- We want to package the tasks package together with its
          package dependencies, the linker, and the linker's
-         dependencies, in order to prevent projects that contsume the
+         dependencies, in order to prevent projects that consume the
          tasks package from pulling in the linker. To do this, we need
          to include project references and package references in the
          package, and prevent any of these references from being
@@ -92,14 +93,68 @@
        Instead, we use GenerateNuspecDependsOn. We could probably also
        use BeforeTargets="GenerateNuspec". -->
   <PropertyGroup>
-    <GenerateNuspecDependsOn>Publish;SetDynamicNuspecProperties;$(GenerateNuspecDependsOn)</GenerateNuspecDependsOn>
+    <GenerateNuspecDependsOn>ShowConfig;SetDynamicNuspecProperties;$(GenerateNuspecDependsOn)</GenerateNuspecDependsOn>
   </PropertyGroup>
-  <Target Name="SetDynamicNuspecProperties">
+  <Target Name="SetDynamicNuspecProperties"
+          DependsOnTargets="LayoutPackage">
     <PropertyGroup>
       <NuspecProperties>$(NuspecProperties)output=$(PublishDir);version=$(Version);</NuspecProperties>
     </PropertyGroup>
   </Target>
 
+  <Target Name="LayoutPackage"
+          DependsOnTargets="PublishForAllTargetFrameworks">
+    <Message Text="PublishDir: $(PublishDir)" />
+  </Target>
+
+  <Target Name="ShowConfig"
+          BeforeTargets="Pack">
+    <Message Text="showconfig" />
+    <Message Text="Configuration: $(Configuration)" />
+    <Message Text="Configurations: @(Configurations)" />
+  </Target>
+  
+  <Target Name="PublishForAllTargetFrameworks">
+    <Message Text="publishforalltargetframeworks" />
+    <Message Text="thisproject: $(MSBuildProjectFile)" />
+    <ItemGroup>
+      <!--
+      <TFMsToPublish Include="net46_Debug">
+        <Id>1</Id>
+      </TFMsToPublish>
+        -->
+      <TFMsToPublish Include="netcoreapp2.0">
+        <Id>2</Id>
+      </TFMsToPublish>
+    </ItemGroup>
+    <Message Text="tfms: $(TargetFrameworks)" />
+    <Message Text="each tfm: %(TFMsToPublish.Identity)" />
+    <ItemGroup>
+      <!--
+      <ConfigsToPublish Include="net46_Debug">
+        <Id>1</Id>
+      </ConfigsToPublish>
+      -->
+      <ConfigsToPublish Include="netcore_Debug">
+        <Id>2</Id>
+      </ConfigsToPublish>
+    </ItemGroup>
+    <ItemGroup>
+      <ProjectsToPublish Include="$(MSBuildProjectFile)">
+        <PublishId>%(Id)</PublishId>
+        <AdditionalProperties>Configuration=@(ConfigsToPublish);TargetFramework=@(TFMsToPublish);PublishDir=publishLayout/@(TFMsToPublish)</AdditionalProperties>
+      </ProjectsToPublish>
+    </ItemGroup>
+    <Message Text="each config: %(ConfigsToPublish.Identity)" />
+    <Message Text="MSBuild Properties: PublishDir=@(TFMsToPublish);Configuration=@(ConfigsToPublish);_ConfigId=%(Id)" />
+    <Message Text="id %(Id): config = @(ConfigsToPublish), tfm = @(TFMsToPublish)" />
+    <MSBuild Projects="@(ProjectsToPublish)"
+             Targets="Publish" />
+  </Target>
+
+  <Target Name="PublishForOneTargetFramework">
+  </Target>
+  
   <ItemGroup>
     <Compile Include="LinkTask.cs" />
     <Compile Include="DepsJsonLinker.cs" />
