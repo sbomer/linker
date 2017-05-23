@@ -10,11 +10,11 @@
       targets.
   -->
   <PropertyGroup>
-    <NetCoreBuild Condition=" $(Configuration.StartsWith('netcore')) Or '$(NuGetRestoreTargets)' != '' ">true</NetCoreBuild>
-    <NetCoreBuild Condition=" '$(NetCoreBuild)' == '' ">false</NetCoreBuild>
+    <SDKBuild Condition=" $(Configuration.StartsWith('netcore')) Or  $(Configuration.StartsWith('net46')) Or '$(NuGetRestoreTargets)' != '' ">true</SDKBuild>
+    <SDKBuild Condition=" '$(SDKBuild)' == '' ">false</SDKBuild>
     <TargetFrameworkProfile />
   </PropertyGroup>
-  <Import Project="NetCore.props" Condition=" $(NetCoreBuild) " />
+  <Import Project="NetCore.props" Condition=" $(SDKBuild) " />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -24,28 +24,29 @@
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Mono.Linker</RootNamespace>
-    <AssemblyName Condition=" ! $(NetCoreBuild) ">monolinker</AssemblyName>
-    <AssemblyName Condition=" $(NetCoreBuild) ">illink</AssemblyName>
+    <AssemblyName Condition=" ! $(SDKBuild) ">monolinker</AssemblyName>
+    <AssemblyName Condition=" $(SDKBuild) ">illink</AssemblyName>
     <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+  <PropertyGroup Condition=" $(Configuration.EndsWith('Debug')) ">
     <DebugSymbols>True</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>False</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DefineConstants>$(DefineConstants);DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+  <PropertyGroup Condition=" $(Configuration.EndsWith('Release')) ">
     <DebugType>pdbonly</DebugType>
     <Optimize>True</Optimize>
     <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>$(DefineConstants);TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" Condition=" ! $(NetCoreBuild) " />
+
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" Condition=" ! $(SDKBuild) " />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
@@ -53,11 +54,16 @@
   <Target Name="AfterBuild">
   </Target>
   -->
-  <ItemGroup Condition=" ! $(NetCoreBuild) ">
+  <ItemGroup Condition=" ! $(SDKBuild) ">
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml" />
   </ItemGroup>
+  <!-- The following keeps Visual Studio happy -->
+  <PropertyGroup Condition=" '$(Configuration)' == 'netcore_Debug' " />
+  <PropertyGroup Condition=" '$(Configuration)' == 'netcore_Release' " />
+  <PropertyGroup Condition=" '$(Configuration)' == 'net46_Debug' " />
+  <PropertyGroup Condition=" '$(Configuration)' == 'net46_Release' " />
   <ItemGroup>
     <Compile Include="Mono.Linker.Steps\BaseStep.cs" />
     <Compile Include="Mono.Linker.Steps\BlacklistStep.cs" />
@@ -91,6 +97,26 @@
     <Compile Include="Mono.Linker\TypeReferenceExtensions.cs" />
     <Compile Include="Mono.Linker\XApiReader.cs" />
     <Compile Include="Mono.Linker.Steps\TypeMapStep.cs" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(DoNotEmbedDescriptors)' == '' AND ! $(SDKBuild) ">
+    <EmbeddedResource Include="Descriptors\mscorlib.xml">
+      <LogicalName>mscorlib.xml</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Descriptors\System.Web.xml">
+      <LogicalName>System.web.xml</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Descriptors\System.xml">
+      <LogicalName>System.xml</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Descriptors\Mono.Posix.xml">
+      <LogicalName>Mono.Posix.xml</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Descriptors\System.Drawing.xml">
+      <LogicalName>System.Drawing.xml</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Descriptors\System.Core.xml">
+      <LogicalName>System.Core.xml</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
