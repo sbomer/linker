@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <VersionPrefix>0.1.5-preview</VersionPrefix>
-    <TargetFramework>netcoreapp2.0</TargetFramework>
     <TargetFrameworks>netcoreapp2.0;net46</TargetFrameworks>
     <RuntimeFrameworkVersion>2.0.0-beta-001509-00</RuntimeFrameworkVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
@@ -102,13 +101,26 @@
     </PropertyGroup>
   </Target>
 
+  <Target Name="printstuff"
+          AfterTargets="ResolveAssemblyReferences">
+    <Message Text="ReferencePath: @(ReferencePath)" />
+    <Message Text="ReferenceDependencyPaths: @(ReferenceDependencyPaths)" />
+    <Message Text="ReferenceCopyLocalPaths: @(ReferenceCopyLocalPaths)" />
+    <Message Text="_ResolvedProjectReferencePaths: @(_ResolvedProjectReferencePaths)" />
+  </Target>
+  
+  <Target Name="printconfigs"
+          BeforeTargets="AssignProjectConfiguration">
+    <Message Text="CurrentSolutionConfigurationContents: $(CurrentSolutionConfigurationContents)" />
+  </Target>
+  
   <Target Name="LayoutPackage"
           DependsOnTargets="PublishForAllTargetFrameworks">
     <ItemGroup>
       <PublishDlls Include="$(PublishDirWithAllTFMs)/**/*.dll" />
     </ItemGroup>
     <PropertyGroup>
-      <PackageDirWithAllTFMs>packageTFMs</PackageDirWithAllTFMs>
+      <PackageDirWithAllTFMs>packageToolsDir</PackageDirWithAllTFMs>
     </PropertyGroup>
     <ItemGroup>
       <PackageDlls Include="$(PackageDirWithAllTFMs)/%(PublishDlls.RecursiveDir)%(Filename)%(Extension)" />
@@ -118,32 +130,22 @@
   
   <Target Name="PublishForAllTargetFrameworks">
     <PropertyGroup>
-      <PublishDirWithAllTFMs>publishTFMs</PublishDirWithAllTFMs>
+      <PublishDirWithAllTFMs>publishTFMDir</PublishDirWithAllTFMs>
     </PropertyGroup>
     <ItemGroup>
-      <TFMsToPublish Include="netcoreapp2.0">
-        <Id>1</Id>
-      </TFMsToPublish>
-      <!--
-      <TFMsToPublish Include="net46_Debug">
-        <Id>2</Id>
-        </TFMsToPublish>
-      -->
+      <TFMsToPublish Include="$(TargetFrameworks)" />
     </ItemGroup>
     <ItemGroup>
       <ConfigsToPublish Include="netcore_Debug">
         <Id>1</Id>
       </ConfigsToPublish>
-      <!--
       <ConfigsToPublish Include="net46_Debug">
         <Id>2</Id>
-        </ConfigsToPublish>
-      -->
+      </ConfigsToPublish>
     </ItemGroup>
     <ItemGroup>
       <ProjectsToPublish Include="$(MSBuildProjectFile)">
-        <PublishId>%(Id)</PublishId>
-        <AdditionalProperties>Configuration=@(ConfigsToPublish);TargetFramework=@(TFMsToPublish);PublishDir=$(PublishDirWithAllTFMs)/@(TFMsToPublish)</AdditionalProperties>
+        <AdditionalProperties>TargetFramework=%(TFMsToPublish.Identity);PublishDir=%(TFMsToPublish.Identity)</AdditionalProperties>
       </ProjectsToPublish>
     </ItemGroup>
     <MSBuild Projects="@(ProjectsToPublish)" Targets="Publish" />
@@ -203,13 +205,35 @@
        </ItemGroup>
    -->
 
+  <Target Name="SetCecilConfiguration"
+          AfterTargets="AssignProjectConfiguration">
+    <Message Text="each ProjectReference: @(ProjectReference)" />
+    <ItemGroup>
+      <MyPR Include="@(ProjectReference)" />
+    </ItemGroup>
+    <ItemGroup>
+      <MyPRC Include="@(ProjectReferenceWithConfiguration)" />
+    </ItemGroup>
+    <Message Text="each ProjectReferenceWithConfiguration: @(ProjectReferenceWithConfiguration)" />
+    <ItemGroup>
+      <ProjectReferenceWithConfiguration Condition=" '%(Filename)%(Extension)' == 'Mono.Cecil.csproj' Or '%(Filename)%(Extension)' == 'Mono.Cecil.Pdb.csproj' ">
+        <SetConfiguration>Configuration=netstandard_$(Configuration)</SetConfiguration>
+      </ProjectReferenceWithConfiguration>
+    </ItemGroup>
+    <ItemGroup>
+      <MyPRCAfter Include="@(ProjectReferenceWithConfiguration)" />
+    </ItemGroup>
+  </Target>
+
   
   <ItemGroup>
     <!-- TODO: Once https://github.com/dotnet/sdk/issues/952 is fixed,
          use PrivateAssets="All" to prevent this project reference
          from being marked as a dependency of the tasks package (while
          still including it in the publish output). -->
-    <ProjectReference Include="../../../linker/Mono.Linker.csproj" />
+    <ProjectReference Include="../../../linker/Mono.Linker.csproj">
+      <SetConfiguration>Configuration=netcore_$(Configuration)</SetConfiguration>
+    </ProjectReference>
       <!-- SetConfiguration isn't required when the configuration is
            already set in the solution. However, it should be possible
            to set it here to allow packing the tasks csproj on its
