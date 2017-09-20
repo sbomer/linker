@@ -5,7 +5,8 @@
     <TargetFrameworks Condition=" '$(OS)' != 'Windows_NT' ">netcoreapp2.0</TargetFrameworks>
     <RuntimeFrameworkVersion>2.0.0-beta-001509-00</RuntimeFrameworkVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <PackageOutputPath>../nupkgs</PackageOutputPath>
+    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+    <PackageOutputPath>..\bin\nupkgs</PackageOutputPath>
 
     <!-- IsTool true causes the build output to be placed in the
          package's tools folder. This allows projects to reference the
@@ -78,7 +79,7 @@
     <ItemGroup>
       <TFMsToPublish Include="$(TargetFrameworks)" />
       <ProjectsToPublish Include="$(MSBuildProjectFile)">
-        <AdditionalProperties>TargetFramework=%(TFMsToPublish.Identity);PublishDir=%(TFMsToPublish.Identity)</AdditionalProperties>
+        <AdditionalProperties>TargetFramework=%(TFMsToPublish.Identity);PublishDir=bin\%(TFMsToPublish.Identity)</AdditionalProperties>
       </ProjectsToPublish>
     </ItemGroup>
     <MSBuild Projects="@(ProjectsToPublish)" Targets="Publish" />
@@ -167,6 +168,10 @@
       <SetConfiguration>Configuration=illink_$(Configuration)</SetConfiguration>
     </ProjectReference>
     <ProjectReference Include="../../../cecil/Mono.Cecil.csproj" />
+	  
+	<ProjectReference Include="../ILLink.CustomSteps/ILLink.CustomSteps.csproj">
+	  <SetConfiguration>Configuration=illink_$(Configuration)</SetConfiguration>
+	</ProjectReference>
   </ItemGroup>
 
   <!-- Workaround for the SetConfiguration issue described above. -->

@@ -26,3 +26,5 @@ bin/
 *.FileListAbsolute.txt
 
 **/Dependencies/*.dll
+
+corebuild/Tools

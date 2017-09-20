@@ -12,7 +12,7 @@ if [ ! -e $bootStrapperPath ]; then
     cp $__scriptpath/bootstrap.sh $__scriptpath/Tools
 fi
 
-$bootStrapperPath --verbose --repositoryRoot $__scriptpath --toolsLocalPath $toolsLocalPath > bootstrap.log
+$bootStrapperPath --verbose --repositoryRoot $__scriptpath --toolsLocalPath $toolsLocalPath > Tools/bootstrap.log
 lastExitCode=$?
 if [ $lastExitCode -ne 0 ]; then
     echo "Boot-strapping failed with exit code $lastExitCode, see bootstrap.log for more information."
