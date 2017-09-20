@@ -10,8 +10,8 @@ namespace ILLink.CustomSteps
 	{
 		protected override void ProcessAssembly(AssemblyDefinition assembly)
 		{
-			foreach (ModuleDefinition module in assembly.Modules) { 
-				foreach (TypeDefinition type in module.Types) { 
+			foreach (ModuleDefinition module in assembly.Modules) {
+				foreach (TypeDefinition type in module.Types) {
 					foreach (MethodDefinition method in type.Methods) {
 						if (method.Body != null) {
 							method.Body.InitLocals = false;

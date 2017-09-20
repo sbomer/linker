@@ -58,7 +58,7 @@ Global
 		{63E6915C-7EA4-4D76-AB28-0D7191EEA626}.Release|x64.ActiveCfg = netstandard_Release|x64
 		{63E6915C-7EA4-4D76-AB28-0D7191EEA626}.Release|x64.Build.0 = netstandard_Release|x64
 		{63E6915C-7EA4-4D76-AB28-0D7191EEA626}.Release|x86.ActiveCfg = netstandard_Release|x86
-		{63E6915C-7EA4-4D76-AB28-0D7191EEA626}.Release|x86.Build.0 = netstandard_Release|x86				
+		{63E6915C-7EA4-4D76-AB28-0D7191EEA626}.Release|x86.Build.0 = netstandard_Release|x86
 		{275C1D10-168A-4AC4-8F3E-AD969F580B9C}.Debug|Any CPU.ActiveCfg = illink_Debug|Any CPU
 		{275C1D10-168A-4AC4-8F3E-AD969F580B9C}.Debug|Any CPU.Build.0 = illink_Debug|Any CPU
 		{275C1D10-168A-4AC4-8F3E-AD969F580B9C}.Debug|x64.ActiveCfg = illink_Debug|x64
