@@ -118,8 +118,13 @@ namespace Mono.Linker.Steps {
 
 			CopyConfigFileIfNeeded (assembly, directory);
 
+
 			var action = Annotations.GetAction (assembly);
-			Context.LogMessage (MessageImportance.Low, $"Output action: {action,8} assembly: {assembly}");
+			Context.LogMessage (MessageImportance.High, $"Output action: {action,8} assembly: {assembly}");
+
+                        if (assembly.Name.Name.Contains("System.Private.CoreLib")) {
+                            Console.WriteLine("SPC action during outputstep: " + action);
+                        }
 
 			switch (action) {
 			case AssemblyAction.Save:
@@ -220,6 +225,8 @@ namespace Mono.Linker.Steps {
 			string source = fi.FullName;
 			if (source == target)
 				return;
+
+                        Console.WriteLine("copying " + source + " to " + target);
 
 			File.Copy (source, target, true);
 

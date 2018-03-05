@@ -196,16 +196,26 @@
           DependsOnTargets="_ComputeManagedResolvedAssembliesForCrossGen;_ComputePlatformLibraries"
           Condition=" '@(FilesToCrossGen->Count())' == '0' ">
 
+    <Message Importance="High" Text="ManagedResolvedAssembliesForCrossGen: @(_ManagedResolvedAssembliesForCrossGen)" />
+
     <FilterByMetadata Items="@(_ManagedResolvedAssembliesForCrossGen)"
                       MetadataName="Filename"
                       MetadataValues="@(PlatformLibraries->'%(Filename)')">
       <Output TaskParameter="FilteredItems" ItemName="_PlatformLibrariesForCrossGen" />
     </FilterByMetadata>
 
+    <Message Importance="High" Text="_PlatformLibrariesForCrossGen: @(_PlatformLibrariesForCrossGen)" />
+
     <ItemGroup>
       <FilesToCrossGen Include="@(IntermediateAssembly)" />
       <FilesToCrossGen Include="@(_PlatformLibrariesForCrossGen)" />
     </ItemGroup>
+
+    <!-- this error probably never worked. maybe it did? it DID. -->
+    <!-- <Error Text="System.Private.CoreLib should already be crossgen compiled." Condition=" '%(FilesToCrossGen.Filename)' == 'System.Private.CoreLib' " /> -->
+
+    <Error Text="Expect no crossgen assemblies in portable publish"
+           Condition=" '$(SelfContained)' != 'true' And '@(FilesToCrossGen->Count())' == '0' " />
 
   </Target>
 
@@ -222,7 +232,18 @@
       <FilesToCrossGen Remove="@(_CrossgenedFiles)" />
     </ItemGroup>
 
-    <Message Text="files to crossgen: @(FilesToCrossGen)" />
+    <!-- confirmed that this works!!! -->
+    <!--
+        <Error Text="SPC was detected as R2R" Condition=" '%(_ReadyToRunFiles.Filename)' == 'System.Private.CoreLib' " />
+    -->
+        <!-- confirmed: happens when we crossgen but don't link. -->
+    <!-- in practice, this will never happen, because we're only
+         detecting on filtered output. well, it could happen if we try
+         to crossgen without linking. -->
+
+    <Message Importance="High" Text="files to crossgen: @(FilesToCrossGen)" />
+
+    <Message Importance="High" Text="ReadyToRunFiles: @(_ReadyToRunFiles)" />
   </Target>
 
 </Project>

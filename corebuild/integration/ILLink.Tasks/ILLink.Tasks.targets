@@ -215,6 +215,26 @@
       <FilesToCrossgen Include="@(_LinkedAssembliesToCrossgen)" />
     </ItemGroup>
 
+    <!-- Check for assemblies that had bypassngen attribute set,
+         but weren't crossgen'd. -->
+    <FilterByMetadata Items="@(_LinkedResolvedAssemblies);@(_LinkedIntermediateAssembly)"
+                      MetadataName="Filename"
+                      MetadataValues="@(_PlatformAssembliesToLink)">
+      <Output TaskParameter="FilteredItems" ItemName="_LinkedPlatformAssemblies" />
+    </FilterByMetadata>
+    <FilterByMetadata Items="@(_LinkedPlatformAssemblies)"
+                      MetadataName="Filename"
+                      MetadataValues="@(_LinkedAssembliesToCrossgen->'%(Filename)'">
+      <Output TaskParameter="FilteredItems" ItemName="_PlatformAssembliesNotCrossgend" />
+    </FilterByMetadata>
+
+    <Message Text="_LinkedAssembliesToCrossgen: @(_LinkedAssembliesToCrossgen)" Importance="High" />
+    <Error Text="failed to get the linked assemblies to crossgen!" Condition=" '@(_LinkedAssembliesToCrossgen->Count())' == '0' " />
+    <Message Text="_LinkedPlatformAssemblies: @(_LinkedPlatformAssemblies)" Importance="High" />
+    <Error Text="Encountered some assemblies that had bypassngen attribute set, but weren't crossgen'd: @(_PlatformAssemliesNotCrossgend)"
+           Condition=" @(_PlatformAssembliesNotCrossgend->Count()) != '0' " />
+    <Error Text="mismatch!" Condition=" '@(_LinkedPlatformAssemblies)' != '@(_LinkedAssembliesToCrossgen)' " />
+
   </Target>
 
   <UsingTask TaskName="SetAssemblyActions" AssemblyFile="$(LinkTaskDllPath)" />
@@ -355,9 +375,11 @@
          from ResolvedAssembliesToPublish? We may be able to check for
          AssetType="runtime" on managed assemblies - would that give
          the same set of assemblies? -->
+    <Message Importance="High" Text="ResolvedAssembliesToPublish, before: @(ResolvedAssembliesToPublish)" />
     <ComputeManagedAssemblies Assemblies="@(ResolvedAssembliesToPublish)">
       <Output TaskParameter="ManagedAssemblies" ItemName="_ManagedResolvedAssembliesToPublish" />
     </ComputeManagedAssemblies>
+    <Message Importance="High" Text="_ManagedResolvedAssembliesToPublish, before: @(_ManagedResolvedAssembliesToPublish)" />
     <!-- For now, hard-code System.Private.CoreLib.ni, the only .ni
          file we've been encountering. This is a special case matching
          how we compute the linker roots by default - we always root
@@ -422,6 +444,19 @@
       <LinkerRootAssemblies Include="@(_ManagedResolvedAssembliesToPublish->'%(Filename)')" Condition=" '%(Filename)' == 'System.Private.CoreLib' " />
     </ItemGroup>
 
+    <ItemGroup>
+      <!-- ENSURE THAT THIS DOESN't ADD SPC in portable publish! -->
+      <!-- SPC is never rooted. that's why this is commented, correctly! -->
+      <!-- <LinkerRootAssemblies Include="System.Private.CoreLib" Condition=" '$(_SPCHasEmbeddedRootDescriptor)' == 'false' "/> -->
+    </ItemGroup>
+
+    <!--
+    <Message Importance="High" Text="LinkerRootAssemblies: @(LinkerRootAssemblies)" />
+    <Message Importance="High" Text="LinkerRootAssemblies...?" Condition=" '%(LinkerRootAssemblies.Identity)' == 'System.Private.CoreLib' " />
+    <Error Text="WAT @( LinkerRootAssemblies)" Condition=" '%(Identity)' == 'System.Private.CoreLib' " />
+    <Error Text="HELLO?! @(LinkerRootAssemblies)" Condition=" '%(Identity)' == 'System.Private.CoreLib' " />
+    -->
+
   </Target>
 
   <UsingTask TaskName="CheckEmbeddedRootDescriptor" AssemblyFile="$(LinkTaskDllPath)" />
@@ -448,6 +483,9 @@
     <ItemGroup>
       <PlatformLibraries Include="@(_ManagedAssembliesToLink)" Condition=" '%(Filename)' == 'System.Private.CoreLib' " />
     </ItemGroup>
+
+    <Message Importance="High" Text="PlatformLibraries: @(PlatformLibraries)" />
+    <Message Importance="High" Text="ManagedAssembliesToLink: @(_ManagedAssembliesToLink)" />
 
     <ItemGroup Condition=" '$(SelfContained)' != 'true' ">
       <!-- Portable publish: computed referenced-not-published set in _ComputeManagedAssembliesToLink -->
@@ -502,6 +540,7 @@
       <_PublishConflictPackageFiles Include="@(_RemovedManagedAssemblies)" />
       <_PublishConflictPackageFiles Include="@(_RemovedNativeDeps)" />
     </ItemGroup>
+    <Message Importance="High" Text="Removed native dependencies: @(_RemovedNativeDeps)" />
   </Target>
 
 </Project>
