@@ -81,8 +81,8 @@ The linker can be invoked as an MSBuild task, `ILLink`. We recommend not using t
 
 ```xml
 <ILLink AssemblyPaths="@(AssemblyFilesToLink)"
-        RootAssemblyNames="@(LinkerRootAssemblies)"
-        RootDescriptorFiles="@(LinkerRootDescriptors)"
+        RootAssemblyNames="@(TrimmerRootAssemblies)"
+        RootDescriptorFiles="@(TrimmerRootDescriptors)"
         OutputDirectory="output"
         ExtraArgs="-t -c link -l none" />
 ```
