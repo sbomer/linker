@@ -13,6 +13,7 @@
     <IsUnitTestProject>true</IsUnitTestProject>
     <!-- Arcade's custom test imports assume that we are using xunit. -->
     <DisableArcadeTestFramework Condition=" '$(ArcadeBuild)' == 'true' ">true</DisableArcadeTestFramework>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <PropertyGroup Condition=" ! $(Configuration.StartsWith('illink')) ">

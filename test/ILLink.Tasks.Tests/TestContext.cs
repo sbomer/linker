@@ -63,7 +63,7 @@ namespace ILLink.Tests
 #else
 			// Tests are run from <root>/bin/ILLink.Tasks.Tests/Debug/netcoreapp3.0
 			string repoRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "..", "..", ".."));
-			TasksDirectoryRoot = Path.Combine(repoRoot, "bin", "ILLink.Tasks") + Path.DirectorySeparatorChar;
+			TasksDirectoryRoot = Path.Combine(repoRoot, "bin", "ILLink.Tasks", "Debug") + Path.DirectorySeparatorChar;
 #endif
 			if (!Directory.Exists(TasksDirectoryRoot))
 				throw new Exception($"failed to locate local linker tasks at {TasksDirectoryRoot}");
