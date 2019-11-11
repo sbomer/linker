@@ -1,19 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup Condition=" $(Configuration.StartsWith('illink')) ">
+  <PropertyGroup>
     <AssemblyName>illink</AssemblyName>
     <Description>IL Linker</Description>
     <DefineConstants>$(DefineConstants);FEATURE_ILLINK</DefineConstants>
     <!-- net46 build is disabled until cecil uses SDK-style projects. -->
     <TargetFrameworks>netcoreapp2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(MSBuildRuntimeType)' == 'Core' And '$(OS)' != 'Windows_NT' ">netcoreapp2.0</TargetFrameworks>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" ! $(Configuration.StartsWith('illink')) ">
-    <AssemblyName>monolinker</AssemblyName>
-    <AssemblyTitle>Mono.Linker</AssemblyTitle>
-    <Description>Mono CIL Linker</Description>
-    <TargetFrameworks>net471</TargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup>

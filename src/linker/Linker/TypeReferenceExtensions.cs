@@ -180,7 +180,7 @@ namespace Mono.Linker
 			}
 		}
 
-		private static MethodReference MakeMethodReferenceForGenericInstanceType (GenericInstanceType genericInstanceType, MethodDefinition methodDef)
+		public static MethodReference MakeMethodReferenceForGenericInstanceType (GenericInstanceType genericInstanceType, MethodDefinition methodDef)
 		{
 			var method = new MethodReference (methodDef.Name, methodDef.ReturnType, genericInstanceType) {
 				HasThis = methodDef.HasThis,
