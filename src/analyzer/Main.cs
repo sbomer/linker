@@ -12,9 +12,9 @@ using LinkerAnalyzer.Core;
 
 namespace LinkerAnalyzer
 {
-	static class MainClass
+	public static class MainClass
 	{
-		static void Main (string[] args)
+		public static void Main (string[] args)
 		{
 			bool showUsage = true;
 			bool showAllDeps = false;
