@@ -26,9 +26,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\external\cecil\Mono.Cecil.csproj" />
-    <ProjectReference Include="..\..\external\cecil\symbols\mdb\Mono.Cecil.Mdb.csproj" />
-    <ProjectReference Include="..\..\external\cecil\symbols\pdb\Mono.Cecil.Pdb.csproj" />
+    <ProjectReference Include="..\..\..\cecil\Mono.Cecil.csproj" />
+    <ProjectReference Include="..\..\cecil\symbols\mdb\Mono.Cecil.Mdb.csproj" />
+    <ProjectReference Include="..\..\cecil\symbols\pdb\Mono.Cecil.Pdb.csproj" />
   </ItemGroup>
 
   <!-- When publishing illink as a dependency of ILLink.Tasks, we want
