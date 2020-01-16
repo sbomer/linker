@@ -830,7 +830,10 @@ namespace Mono.Linker.Analysis
 				case "System.Runtime.Loader.AssemblyLoadContext":
 					switch (method.Name) {
 						case "GetAssemblyName":
-						case "Load":
+						//case "Load":
+						    // The Load method on ALC just returns null, and so is safe!
+							// it's only unsafe overloads that might be a problem, and these would be considered
+							// unsafe by virtue of calling somethig like LoadFromPath.
 						case "LoadFromAssemblyName":
 						case "LoadFromAssemblyPath":
 						case "LoadFromInMemoryModule": // private
@@ -840,7 +843,8 @@ namespace Mono.Linker.Analysis
 											   // case "LoadTypeForWinRTTypeNameInContext": // private
 											   // case "LoadTypeForWinRTTypeNameInContextInternal": // private
 						case "LoadFromNativeImagePath":
-						case "LoadUnmanagedDll":
+						//case "LoadUnmanagedDll":
+							// like Load, this one returns IntPtr.Zero. is actually safe!
 						case "LoadUnmanagedDllFromPath":
 							return InterestingReason.KnownReflection;
 					}

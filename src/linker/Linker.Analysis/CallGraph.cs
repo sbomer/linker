@@ -127,14 +127,8 @@ namespace Mono.Linker.Analysis
 			}
 
 			foreach (var method in methods) {
-				if (!IsInteresting(method))
-					continue;
-
-				// if the method is called directly, don't add a constructor dependency
-				// since we want to report the direct call instead.
-				if (calls.Where(c => c.Item2 == method).Any()) {
-					continue;
-				}
+				// we need to add constructor edges for any methods called virtually (even if called directly as well)
+				// in case the direct call is only reachable through virtual calls from an otherwise safe caller.
 
 				// if it is never called virtually, don't add any edges.
 				if (!virtualCallees.Contains(method)) {
@@ -144,8 +138,7 @@ namespace Mono.Linker.Analysis
 					// TODO: check that this behaves as expected on netcoreapp
 					continue;
 				}
-
-				var ctors = method.DeclaringType.Methods.Where (m => m.IsConstructor);
+				var ctors = method.DeclaringType.Methods.Where (m => m.IsConstructor && !m.IsStatic);
 				bool constructorCalled = false;
 				foreach (var ctor in ctors) {
 					var dependency = (ctor, method);
