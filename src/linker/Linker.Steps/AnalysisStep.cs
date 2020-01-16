@@ -1,4 +1,4 @@
-using Mono.Cecil;
+﻿using Mono.Cecil;
 using Mono.Linker.Analysis;
 using System.IO;
 using System.Collections.Generic;
@@ -72,6 +72,7 @@ namespace Mono.Linker.Steps
 				var formatter = new Formatter (cg, mapping, json: true, sw);
 				var analyzer = new Analyzer (cg, icg, mapping, apiFilter, patternRecorder.ResolvedReflectionCalls, formatter, Grouping.Callee);
 				analyzer.Analyze ();
+			}
 			}
 		}
 	}
