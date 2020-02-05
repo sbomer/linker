@@ -141,5 +141,47 @@ namespace Mono.Linker
 			}
 
 		}
+
+		public void RecordCctorDependency (TypeDefinition source, MethodDefinition cctor)
+		{
+			System.Diagnostics.Debug.Assert(cctor.IsStatic && cctor.IsConstructor);
+			System.Diagnostics.Debug.Assert(!cctor.DeclaringType.IsBeforeFieldInit);
+			if (IsRecordingEnabled ()) {
+				foreach (IDependencyRecorder recorder in recorders) {
+					recorder.RecordCctorDependency (source, cctor);
+				}
+			}
+		}
+
+		public void RecordCctorFieldAccessDependency (MethodDefinition source, MethodDefinition cctor)
+		{
+			System.Diagnostics.Debug.Assert(cctor.IsStatic && cctor.IsConstructor);
+			System.Diagnostics.Debug.Assert (cctor.DeclaringType.IsBeforeFieldInit);
+			if (IsRecordingEnabled ()) {
+				foreach (IDependencyRecorder recorder in recorders) {
+					recorder.RecordCctorFieldAccessDependency (source, cctor);
+				}
+			}
+		}
+
+		public void RecordEntry (MethodDefinition entry)
+		{
+			// TODO: make this more comprehensive.
+			if (IsRecordingEnabled ()) {
+				foreach (IDependencyRecorder recorder in recorders) {
+					recorder.RecordEntry (entry);
+				}
+			}
+		}
+
+		public void RecordTypeDependency (MethodDefinition source, TypeDefinition type)
+		{
+			if (IsRecordingEnabled ()) {
+				foreach (IDependencyRecorder recorder in recorders) {
+					recorder.RecordTypeDependency (source, type);
+				}
+			}
+		}
+
 	}
 }

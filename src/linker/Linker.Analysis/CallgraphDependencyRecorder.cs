@@ -1,5 +1,6 @@
 using Mono.Cecil;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Mono.Linker.Analysis
 {
@@ -14,6 +15,18 @@ namespace Mono.Linker.Analysis
 			new HashSet<(MethodDefinition source, MethodDefinition target)> ();
 		public HashSet<(MethodDefinition source, MethodDefinition target)> Overrides { get; } =
 			new HashSet<(MethodDefinition source, MethodDefinition target)> ();
+
+		public HashSet<(TypeDefinition source, MethodDefinition target)> CctorDependencies { get; } =
+			new HashSet<(TypeDefinition source, MethodDefinition target)> ();
+
+		public HashSet<(MethodDefinition source, TypeDefinition target)> TypeDependencies { get; } =
+			new HashSet<(MethodDefinition source, TypeDefinition target)> ();
+
+		public HashSet<(MethodDefinition source, MethodDefinition target)> CctorFieldAccessDependencies { get; } =
+			new HashSet<(MethodDefinition source, MethodDefinition target)> ();
+
+		public HashSet<MethodDefinition> EntryMethods { get; } =
+			new HashSet<MethodDefinition> ();
 
 		public void RecordDependency (object source, object target, bool marked)
 		{
@@ -41,6 +54,39 @@ namespace Mono.Linker.Analysis
 			if (source == null || target == null) 
 				return;
 			Overrides.Add ((source, target));
+		}
+
+		public void RecordCctorDependency (TypeDefinition source, MethodDefinition cctor)
+		{
+			if (cctor == null)
+				return;
+			Debug.Assert(cctor.IsStaticConstructor());
+			CctorDependencies.Add((source, cctor));
+			System.Console.WriteLine("cctor dependency: " + source + " -> " + cctor);
+		}
+
+		public void RecordTypeDependency (MethodDefinition source, TypeDefinition type)
+		{
+			if (type == null)
+				return;
+			TypeDependencies.Add((source, type));
+		}
+
+		public void RecordCctorFieldAccessDependency (MethodDefinition source, MethodDefinition cctor)
+		{
+			if (cctor == null)
+				return;
+			Debug.Assert(cctor.IsStaticConstructor());
+			Debug.Assert(cctor.DeclaringType.IsBeforeFieldInit);
+			CctorFieldAccessDependencies.Add((source, cctor));
+			System.Console.WriteLine("cctor field access: " + source + " -> " + cctor);
+		}
+
+		public void RecordEntry (MethodDefinition entry)
+		{
+			if (entry == null)
+				return;
+			EntryMethods.Add(entry);
 		}
 
 	}

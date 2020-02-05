@@ -5,8 +5,8 @@ namespace Mono.Linker.Analysis
 
 	public interface ICallGraph<T>
 	{
-		ICollection<T> Methods { get; }
-		ICollection<(T, T)> Calls { get; }
+		ICollection<T> Nodes { get; }
+		ICollection<(T, T)> Edges { get; }
 		ICollection<(T, T)> Overrides { get; }
 		bool IsEntry (T t);
 		bool IsInteresting (T t);

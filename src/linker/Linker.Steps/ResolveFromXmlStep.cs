@@ -140,6 +140,7 @@ namespace Mono.Linker.Steps {
 
 		void MarkAndPreserveAll (TypeDefinition type)
 		{
+			// TODO: TRACE!
 			Annotations.MarkAndPush (type);
 			Annotations.SetPreserve (type, TypePreserve.All);
 
@@ -173,6 +174,7 @@ namespace Mono.Linker.Steps {
 						foreach (var exported in assembly.MainModule.ExportedTypes) {
 							if (fullname == exported.FullName) {
 								Tracer.Push (exported);
+								// TODO :trace!
 								MarkingHelpers.MarkExportedType (exported, assembly.MainModule);
 								var resolvedExternal = exported.Resolve ();
 								Tracer.Pop ();

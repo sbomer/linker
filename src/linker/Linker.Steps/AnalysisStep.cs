@@ -35,9 +35,14 @@ namespace Mono.Linker.Steps
 				callgraphDependencyRecorder.DirectCalls,
 				callgraphDependencyRecorder.VirtualCalls,
 				callgraphDependencyRecorder.Overrides,
+				callgraphDependencyRecorder.CctorDependencies,
+				callgraphDependencyRecorder.CctorFieldAccessDependencies,
+				callgraphDependencyRecorder.TypeDependencies,
+				callgraphDependencyRecorder.EntryMethods,
 				apiFilter);
 
 			// 2. remove linkeranalyzed edges
+			// this could leave over interesting methods that had understood calls.
 			cg.RemoveCalls(patternRecorder.ResolvedReflectionCalls);
 
 			// 3. add ctor edges (with special attribute)
@@ -45,7 +50,7 @@ namespace Mono.Linker.Steps
 
 			// 4. reduce to the subgraph that reaches unsafe
 			{
-			var (icg, mapping) = IntCallGraph.CreateFrom (cg);
+			var (icg, mapping) = IntCallGraph.CreateFrom<IMemberDefinition> (cg);
 			var intAnalysis = new IntAnalysis(icg);
 			List<int> toRemove = new List<int>();
 			for (int i = 0; i < icg.numMethods; i++) {
@@ -64,13 +69,14 @@ namespace Mono.Linker.Steps
 			cg.RemoveVirtualCalls();
 			
 			{
-			var (icg, mapping) = IntCallGraph.CreateFrom (cg);
+			var (icg, mapping) = IntCallGraph.CreateFrom<IMemberDefinition> (cg);
 
 			// 5. report!
 			string jsonFile = Path.Combine (context.OutputDirectory, "trimanalysis.json");
 			using (StreamWriter sw = new StreamWriter (jsonFile)) {
 				var formatter = new Formatter (cg, mapping, json: true, sw);
-				var analyzer = new Analyzer (cg, icg, mapping, apiFilter, patternRecorder.ResolvedReflectionCalls, formatter, Grouping.Callee);
+				var analyzer = new Analyzer (cg, icg, mapping, apiFilter, patternRecorder.ResolvedReflectionCalls, formatter,
+					Grouping.Caller);
 				analyzer.Analyze ();
 			}
 			}

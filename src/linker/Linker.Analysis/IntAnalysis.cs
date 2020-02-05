@@ -7,47 +7,53 @@ namespace Mono.Linker.Analysis {
         readonly IntCallGraph icg;
         public IntAnalysis(IntCallGraph icg) {
             this.icg = icg;
-            reachesInteresting = new int[icg.numMethods];
         }
 
         int[] reachesInteresting;
-        // 0 means we haven't computed a result yet
-        // 1 means it reaches interesting
-        // -1 means it doesn't
-        // 2 means we have started computing the result
         public bool ReachesInteresting(int i) {
-            if (reachesInteresting[i] != 0) {
-                // memoized result
-                if (reachesInteresting[i] == 1) {
-                    return true;
-                }
-                if (reachesInteresting[i] == -1) {
-                    return false;
-                }
-                System.Diagnostics.Debug.Assert(reachesInteresting[i] == 2);
-                return false;
+            if (reachesInteresting != null) {
+                return reachesInteresting [i] == 1;
             }
-            // indicate we've started processing this one.
-            reachesInteresting[i] = 2;
-            if (icg.isInteresting[i]) {
-                // interesting methods reach interesting by definition (base case)
-                reachesInteresting[i] = 1;
-                return true;
-            }
-            if (icg.callees[i] == null) {
-                // no callees means it is not interesting
-                reachesInteresting[i] = -1;
-                return false;
-            }
-            // recurse into callees
-            foreach (var j in icg.callees[i]) {
-                if (ReachesInteresting(j)) {
-                    reachesInteresting[i] = 1;
-                    return true;
+            // just compute everything up-front
+
+            // bubble up using a queue.
+            int[] q = new int[icg.numMethods];
+            int q_begin = 0;
+            int q_end = 0;
+            reachesInteresting = new int[icg.numMethods];
+            for (int j = 0; j < icg.numMethods; j++) {
+                if (icg.isInteresting [j]) {
+                    reachesInteresting [j] = 1;
+                    q[q_end] = j;
+                    q_end++;
                 }
             }
-            reachesInteresting[i] = -1;
-            return false;
+
+            while (q_end > q_begin) {
+                // pop
+                int j = q[q_begin];
+                q_begin++;
+
+                // look at neighbors
+                if (icg.callers[j] == null)
+                    continue;
+
+                //foreach (int k in icg.callers[j]) {
+                for (int ik = 0; ik < icg.callers[j].Length; ik++) {
+                    int k = icg.callers[j][ik];
+
+                    // don't re-queue an already interesting item
+                    if (reachesInteresting [k] == 1)
+                        continue;
+
+                    reachesInteresting [k] = 1;
+                    q[q_end] = k;
+                    q_end++;
+                }
+            }
+
+            // now return the answre
+            return reachesInteresting [i] == 1;
         }
     }
 }

@@ -24,7 +24,7 @@ namespace Mono.Linker.Analysis
 
 		public static (IntCallGraph, IntMapping<T>) CreateFrom<T> (ICallGraph<T> callGraph)
 		{
-			int numMethods = callGraph.Methods.Count;
+			int numMethods = callGraph.Nodes.Count;
 			bool [] isInteresting = new bool [numMethods];
 			bool [] isEntry = new bool [numMethods];
 			// bidirectional map int <-> method
@@ -35,7 +35,7 @@ namespace Mono.Linker.Analysis
 			var methodToInt = new Dictionary<T, int> ();
 
 			int i = 0;
-			foreach (var m in callGraph.Methods) {
+			foreach (var m in callGraph.Nodes) {
 				intToMethod [i] = m;
 				methodToInt [m] = i;
 				if (callGraph.IsInteresting (m)) {
@@ -53,8 +53,8 @@ namespace Mono.Linker.Analysis
 			var calleesMap = new Dictionary<int, List<int>> ();
 			var callersMap = new Dictionary<int, List<int>> ();
 			int j;
-			foreach (var c in callGraph.Calls) {
-				var (caller, callee) = c;
+			foreach (var e in callGraph.Edges) {
+				var (caller, callee) = e;
 				i = methodToInt [caller];
 				j = methodToInt [callee];
 

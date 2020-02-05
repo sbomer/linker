@@ -44,5 +44,9 @@ namespace Mono.Linker
 		void RecordDirectCall (MethodDefinition source, MethodDefinition target);
 		void RecordVirtualCall (MethodDefinition source, MethodDefinition target);
 		void RecordOverride (MethodDefinition source, MethodDefinition target);
+		void RecordTypeDependency (MethodDefinition source, TypeDefinition type);
+		void RecordCctorDependency (TypeDefinition source, MethodDefinition cctor);
+		void RecordCctorFieldAccessDependency (MethodDefinition source, MethodDefinition cctor);
+		void RecordEntry (MethodDefinition entry);
 	}
 }

@@ -17,11 +17,11 @@ namespace Mono.Linker.Analysis
 		public Dictionary<MethodDefinition, HashSet<AnalyzedStacktrace>> stacktracesPerGroup;
 		public List<AnalyzedStacktrace> allStacktraces;
 
-		private readonly ICallGraph<MethodDefinition> callGraph;
+		private readonly CallGraph callGraph;
 		private readonly ApiFilter apiFilter;
 		private readonly Dictionary<MethodDefinition, HashSet<MethodDefinition>> resolvedReflectionCalls;
 		private readonly IntCallGraph intCallGraph;
-		private readonly IntMapping<MethodDefinition> mapping;
+		private readonly IntMapping<IMemberDefinition> mapping;
 		private readonly Formatter formatter;
 		private readonly Grouping grouping;
 
@@ -50,7 +50,7 @@ namespace Mono.Linker.Analysis
 
 		public Analyzer (CallGraph callGraph,
 						IntCallGraph intCallGraph,
-						IntMapping<MethodDefinition> mapping,
+						IntMapping<IMemberDefinition> mapping,
 						ApiFilter apiFilter,
 						Dictionary<MethodDefinition, HashSet<MethodDefinition>> resolvedReflectionCalls,
 						Formatter formatter = null,
@@ -172,47 +172,65 @@ namespace Mono.Linker.Analysis
 			numInterestingMethods = 0;
 
 			interestingReasons = new InterestingReason [intCallGraph.numMethods];
-			isVirtualMethod = new bool [callGraph.Methods.Count];
-			isAnnotatedSafeMethod = new bool [callGraph.Methods.Count];
-			bool[] isPublicOrVirtual = new bool [callGraph.Methods.Count];
-			bool[] isEntry = new bool [callGraph.Methods.Count];
-			bool[] isStaticCtor = new bool [callGraph.Methods.Count];
-			bool[] isEntryOrStaticCtor = new bool [callGraph.Methods.Count];
-			int [] [] safeEdges = new int [callGraph.Methods.Count] [];
+			isVirtualMethod = new bool [callGraph.Nodes.Count()];
+			isAnnotatedSafeMethod = new bool [callGraph.Nodes.Count()];
+			bool[] isPublicOrVirtual = new bool [callGraph.Nodes.Count()];
+			bool[] isEntry = new bool [callGraph.Nodes.Count()];
+			bool[] isStaticCtor = new bool [callGraph.Nodes.Count()];
+			bool[] isEntryOrUnanalyzedStaticCtor = new bool [callGraph.Nodes.Count()];
+			bool[] isEntryOrStaticCtor = new bool [callGraph.Nodes.Count()];
+			int [] [] safeEdges = new int [callGraph.Nodes.Count()] [];
+			bool[] isReported = new bool [callGraph.Nodes.Count()];
+			bool[] isType = new bool [callGraph.Nodes.Count()];
 			for (int i = 0; i < intCallGraph.numMethods; i++) {
-				var cecilMethod = mapping.intToMethod [i];
-				if (cecilMethod == null) {
-					continue;
-				}
-				if (cecilMethod.IsConstructor && cecilMethod.IsStatic) {
-					isStaticCtor [i] = true;
-				}
-				if (intCallGraph.isInteresting [i]) {
-					numInterestingMethods++;
-					var reason = apiFilter.GetInterestingReason (cecilMethod);
-					interestingReasons [i] = reason;
-					TrackInterestingReason (reason, cecilMethod);
-				}
-				if (intCallGraph.isEntry [i]) {
-					numEntryMethods++;
-				}
-				if (cecilMethod.IsVirtual) {
-					isVirtualMethod [i] = true;
-				}
-				if (intCallGraph.isEntry [i] || isVirtualMethod [i]) {
-					isPublicOrVirtual [i] = true;
-				}
-				if (intCallGraph.isEntry [i]) {
-					isEntry [i] = true;
-				}
-				if (isEntry [i] || isStaticCtor [i]) {
-						isEntryOrStaticCtor [i] = true;
+				switch (mapping.intToMethod [i]) {
+				case MethodDefinition cecilMethod:
+					if (cecilMethod == null) {
+						continue;
 					}
-				if (apiFilter.IsAnnotatedLinkerFriendlyApi (cecilMethod)) {
-					isAnnotatedSafeMethod [i] = true;
-				}
+					if (cecilMethod.IsConstructor && cecilMethod.IsStatic) {
+						isStaticCtor [i] = true;
+					}
+					if (intCallGraph.isInteresting [i]) {
+						numInterestingMethods++;
+						var reason = apiFilter.GetInterestingReason (cecilMethod);
+						interestingReasons [i] = reason;
+						TrackInterestingReason (reason, cecilMethod);
+					}
+					if (intCallGraph.isEntry [i]) {
+						numEntryMethods++;
+					}
+					if (cecilMethod.IsVirtual) {
+						isVirtualMethod [i] = true;
+					}
+					if (intCallGraph.isEntry [i] || isVirtualMethod [i]) {
+						isPublicOrVirtual [i] = true;
+					}
+					if (intCallGraph.isEntry [i]) {
+						isEntry [i] = true;
+						isEntryOrStaticCtor [i] = true;
+						isEntryOrUnanalyzedStaticCtor [i] = true;
+					}
+					if (isStaticCtor [i]) {
+						isEntryOrStaticCtor [i] = true;
+						if (!callGraph.cctorFieldAccessDependencies.Any(d => d.Item2 == cecilMethod)) {
+						    //&& !callGraph.cctorDependencies.Any(d => d.Item2 == cecilMethod)) {
+							// TODO: the cctorDependencies check doesn't capture enough yet.
 
+							// if we're not yet tracking a reason for the cctor to be kept,
+							// we should stop here and report it.
+							isEntryOrUnanalyzedStaticCtor [i] = true;
+						}
+					}
+					if (apiFilter.IsAnnotatedLinkerFriendlyApi (cecilMethod)) {
+						isAnnotatedSafeMethod [i] = true;
+					}
+					break;
+				case TypeDefinition cecilType:
+					isType [i] = true;
+					break;
 				}
+			}
 
 			Console.WriteLine ("found " + intCallGraph.numMethods + " methods");
 			Console.WriteLine ("found " + numEntryMethods + " entry methods");
@@ -264,15 +282,15 @@ namespace Mono.Linker.Analysis
 
 			int num_stacktraces = 0;
 
+			// TODO: assert that every unsafe API in the input is reported at least once.
 
 			IntBFS.AllPairsBFS (
 				neighbors: intCallGraph.callers,                 // search bottom-up (callees to callers).
 				isSource: intCallGraph.isInteresting,            // look for a shortest path from each "interesting" method...
-				isDestination: isEntryOrStaticCtor,                          // ...to each "entry" method
+				isDestination: isEntry,                          // ...to each "entry" method
 				numMethods: intCallGraph.numMethods,
 				excludePathsToSources: true,                     // ...that don't go through any other "interesting" methods.
 				ignoreEdgesTo: isAnnotatedSafeMethod,            // ignore calls from annotated safe methods (edges to safe methods in the bottom-up case)
-				ignoreEdgesFrom: isVirtualMethod,                // ignore calls to virtual methods (edges from virtual methods in the bottom-up case)
 				//ignoreEdges: safeEdges,                          // ignore all edges already marked as safe
 
 				// don't report paths that go through another public or virtual method
@@ -299,12 +317,23 @@ namespace Mono.Linker.Analysis
 								category = CategorizeStacktraceWithCecil (f.asMethods),
 								reason = interestingReasons [sourceInterestingMethod]
 							};
+							isReported [sourceInterestingMethod] = true;
+							isReported [destination] = true;
 							cq.Enqueue (res);
 							Interlocked.Add (ref num_stacktraces, 1);
 						}
 					}
 				});
 			cq.Enqueue (new AnalyzedStacktrace { source = -2 }); // signal completion
+
+			var intAnalysis = new IntAnalysis(intCallGraph);
+
+			for (int i = 0; i < callGraph.Nodes.Count(); i++) {
+				// every kept interesting method should be reported, if our graph is complete
+				if (intCallGraph.isInteresting [i] && !isReported [i]) {
+					Console.Error.WriteLine("never reported kept interesting method! " + mapping.intToMethod [i]);
+				}
+			}
 
 			// record the shortest reverse path from each "dangerous" API to each public or virtual method
 			//var result = Parallel.For(0, numInterestingMethods, (iInteresting, state) =>
@@ -507,7 +536,8 @@ namespace Mono.Linker.Analysis
 		{
 			var ordered = hitTypesPerNS.OrderByDescending (e => e.Value.Count);
 
-			HashSet<TypeDefinition> allTypes = callGraph.Methods.Select (m => m.DeclaringType).ToHashSet ();
+			HashSet<TypeDefinition> allTypes = callGraph.Nodes.Where (m => m is MethodDefinition).Select (m => m.DeclaringType).ToHashSet ();
+			// TODO: just use types from the graph here!
 			HashSet<string> allNamespaces = allTypes.Select (t => t.Namespace).Where (ns => !string.IsNullOrEmpty (ns)).ToHashSet ();
 
 			var totalTypesPerNS = new Dictionary<string, int> ();

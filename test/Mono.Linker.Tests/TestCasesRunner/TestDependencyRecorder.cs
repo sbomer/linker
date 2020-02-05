@@ -37,5 +37,21 @@ namespace Mono.Linker.Tests.TestCasesRunner
 		{
 			// do nothing, as this recorder doesn't treat overrides specially.
 		}
+
+		public void RecordCctorDependency (TypeDefinition source, MethodDefinition cctor)
+		{
+		}
+
+		public void RecordTypeDependency (MethodDefinition source, TypeDefinition type)
+		{
+		}
+
+		public void RecordCctorFieldAccessDependency (MethodDefinition source, MethodDefinition cctor)
+		{
+		}
+
+		public void RecordEntry (MethodDefinition entry)
+		{
+		}
 	}
 }

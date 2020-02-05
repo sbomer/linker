@@ -80,12 +80,12 @@ namespace Mono.Linker.Analysis
 		TextWriter textWriter;
 		ApiFilter apiFilter;
 		CallGraph callGraph;
-		IntMapping<MethodDefinition> mapping;
+		IntMapping<IMemberDefinition> mapping;
 
 		bool json = false;
 
 		public Formatter (CallGraph callGraph,
-						 IntMapping<MethodDefinition> mapping,
+						 IntMapping<IMemberDefinition> mapping,
 						 bool json = false,
 						 TextWriter textWriter = null)
 		{
@@ -151,15 +151,15 @@ namespace Mono.Linker.Analysis
 			var stacktrace = new List<string> ();
 			var output = new List<string> ();
 			var methods = new List<MethodDefinition> ();
-			MethodDefinition methodDef, prevMethodDef;
+			IMemberDefinition memberDef, prevMemberDef;
 			string prefix = Prefix (i);
-
-				methodDef = mapping.intToMethod [i];
+			memberDef = mapping.intToMethod [i];
+			switch (memberDef) {
+			case MethodDefinition methodDef:
 				// should never be null, because we already skip nulls when determining entry points.
 				// yet somehow we get null...
 				// TODO: investigate this.
 				// Debug.Assert(methodDef != null);
-
 				if (!reverse) {
 					if (methodDef == null) {
 						output.Add (prefix + "---------- (???)");
@@ -170,42 +170,74 @@ namespace Mono.Linker.Analysis
 				methods.Add (methodDef);
 				output.Add (prefix + methodDef.ToString ());
 				stacktrace.Add (methodDef.ToString ());
+				break;
+			case TypeDefinition typeDef:
+				output.Add ("-- (type) -- " + typeDef.ToString ());
+				stacktrace.Add (typeDef.ToString ());
+				break;
+			}
 
 			while (r.prev [i] != i) {
 				i = r.prev [i];
 				prefix = Prefix (i);
+				prevMemberDef = memberDef;
+				memberDef = mapping.intToMethod [i];
 
-				prevMethodDef = methodDef;
-					methodDef = mapping.intToMethod [i];
+				switch (memberDef) {
+				case MethodDefinition methodDef:
 					// this may give back a null methoddef. not sure why exactly.
 					if (methodDef == null) {
 						// TODO: investigate. for now, don't use FormatMethod.
 						// Console.WriteLine("resolution failure!");
 					}
 
-				if (reverse) {
-					if (callGraph.constructorDependencies.Contains((prevMethodDef, methodDef))) {
-						// TODO: handle ctor dependencies that overlap with real calls
-						output.Add ("-- ctor dependency");
+					if (reverse) {
+						if (prevMemberDef is MethodDefinition prevMethodDef) {
+							if (callGraph.constructorDependencies.Contains((prevMethodDef, methodDef))) {
+								// TODO: handle ctor dependencies that overlap with real calls
+								output.Add ("-- ctor dependency");
+							}
+							if (callGraph.cctorFieldAccessDependencies.Contains((prevMethodDef, methodDef))) {
+								output.Add("-- beforefieldinit static field access");
+							}
+						} else if (prevMemberDef is TypeDefinition prevTypeDef) {
+							if (callGraph.cctorDependencies.Contains((prevTypeDef, methodDef))) {
+								output.Add("-- cctor kept for type");
+							}
+						}
+						//}
+					} else {
+						// TODO
 					}
-				} else {
-					// TODO
-				}
 
 					output.Add (prefix + methodDef.ToString ());
 
-				methods.Add (methodDef);
+					methods.Add (methodDef);
 					stacktrace.Add (methodDef.ToString ());
-
+					break;
+				case TypeDefinition typeDef:
+					output.Add ("-- (type) -- " + typeDef.ToString ());
+					stacktrace.Add (typeDef.ToString ());
+					break;
+				}
 			}
+
 			if (reverse) {
 				prefix = Prefix (i);
-					methodDef = mapping.intToMethod [i];
+				memberDef = mapping.intToMethod [i];
+				switch (memberDef) {
+				case MethodDefinition methodDef:
 					if (methodDef == null) {
 						output.Add (prefix + "---------- (???)");
 					} else {
 						output.Add (prefix + "---------- (" + apiFilter.GetInterestingReason (methodDef).ToString () + ")");
 					}
+					break;
+				case TypeDefinition typeDef:
+					output.Add ("-- (type) -- " + typeDef.ToString ());
+					stacktrace.Add (typeDef.ToString ());
+					break;
+				}
 			}
 
 			Debug.Assert (i == r.source);

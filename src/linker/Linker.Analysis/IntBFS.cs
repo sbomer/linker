@@ -86,34 +86,13 @@ namespace Mono.Linker.Analysis
 			}
 			var destinations = new List<int> ();
 
-			// // consider the source node. as a special case to avoid
-			// if (isDestination[source]) {
-			//     // it may be a destination itself - the zero-length path edge case.
-			//
-			//     // we don't want to report paths from a destination node to a different destination.
-			//     // this will report a single node as being a destination. the zero-length edge case.
-			//     // this is legit algorithmically, but the input should ensure that these don't get reported.
-			//     destinations.Add(source);
-			//     // actually I would expect us to hit this exception... why don't we?
-			//     throw new Exception("expect not to get here because input should ensure we don't report single-node paths.");
-			//     goto Return;
-			//
-			//     // don't queue neighbors of a destination node
-			//     // if (!returnMultiple) {
-			//     //     goto Return;
-			//     // }
-			//     // don't queue neighbors of a destination node.
-			//     // so, if source is a destination, we return just that one hit.
-			//     // if (ignoreEdgesTo != null && ignoreEdgesTo[source]) {
-			//     //     // bottom-up, this will stop at virtual "interesting" APIs.
-			//     //     Console.WriteLine("cutting off search at source " + source);
-			//     //     // in this case, don't even search. just return.
-			//     //     // we don't know what might have called this.
-			//     //     // might have to special-case this if we want to follow
-			//     //     // interesting virtual methods once up the hierarchy.
-			//     //     goto Return;
-			//     // }
-			// }
+			// this *should* report the zero-length path to self as a base case.
+			if (isDestination[source]) {
+				// but don't report path from destination to another destination. just report this node.
+				Console.WriteLine("  is destination");
+				destinations.Add(source);
+				goto Return;
+			}
 
 			q [q_end] = source;
 			q_end++;
@@ -128,7 +107,7 @@ namespace Mono.Linker.Analysis
 				// ignore edges from?
 				// we don't want to queue callers of virtual methods, since the linker
 				// over-estimates these.
-				if (u != source && ignoreEdgesFrom != null && ignoreEdgesFrom [u])
+				if (ignoreEdgesFrom != null && ignoreEdgesFrom [u])
 					continue;
 
 				for (int iv = 0; iv < neighbors [u].Length; iv++) {
