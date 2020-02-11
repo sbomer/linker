@@ -256,7 +256,7 @@ namespace Mono.Linker.Steps {
 			if (Annotations.IsMarked (type)) { 
 				var existingLevel = Annotations.TryGetPreserve (type, out TypePreserve existingPreserve) ? existingPreserve : TypePreserve.Nothing; 
 				var duplicateLevel = preserve != TypePreserve.Nothing ? preserve : nav.HasChildren ? TypePreserve.Nothing : TypePreserve.All; 
-				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {type.FullName} ({existingLevel}).  Duplicate uses ({duplicateLevel})"); 
+				Context.LogWarning ($"Duplicate preserve in {_xmlDocumentLocation} of {type.FullName} ({existingLevel}).  Duplicate uses ({duplicateLevel})"); 
 			} 
 
 			Annotations.MarkAndPush (type);
@@ -360,7 +360,7 @@ namespace Mono.Linker.Steps {
 		{
 			if (field != null) {
 				if (Annotations.IsMarked (field))
-					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
+					Context.LogWarning ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
 				
 				Annotations.Mark (field);
 			} else {
@@ -432,7 +432,7 @@ namespace Mono.Linker.Steps {
 		void MarkMethod (MethodDefinition method)
 		{
 			if (Annotations.IsMarked (method)) 
-				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}"); 
+				Context.LogWarning ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}"); 
 
 			Annotations.Mark (method);
 			Annotations.MarkIndirectlyCalledMethod (method);
@@ -522,7 +522,7 @@ namespace Mono.Linker.Steps {
 		{
 			if (@event != null) {
 				if (Annotations.IsMarked (@event))
-					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {@event.FullName}");
+					Context.LogWarning ($"Duplicate preserve in {_xmlDocumentLocation} of {@event.FullName}");
 
 				Annotations.Mark (@event);
 
@@ -590,7 +590,7 @@ namespace Mono.Linker.Steps {
 		{
 			if (property != null) {
 				if (Annotations.IsMarked (property))
-					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {property.FullName}");
+					Context.LogWarning ($"Duplicate preserve in {_xmlDocumentLocation} of {property.FullName}");
 				
 				Annotations.Mark (property);
 

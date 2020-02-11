@@ -20,5 +20,13 @@ namespace Mono.Linker.Tests.TestCasesRunner
 				Message = string.Format(message, values)
 			});
 		}
+
+		public void LogWarning(string message, params object[] values)
+		{
+		}
+
+		public void LogError(string message, params object[] values)
+		{
+		}
 	}
 }

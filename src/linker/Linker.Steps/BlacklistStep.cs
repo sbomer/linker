@@ -50,7 +50,7 @@ namespace Mono.Linker.Steps {
 					AddToPipeline (GetResolveStep (name));
 				} catch (XmlException ex) {
 					/* This could happen if some broken XML file is included. */
-					Context.LogMessage ("Error processing {0}: {1}", name, ex);
+					Context.LogError ("Error processing {0}: {1}", name, ex);
 				}
 			}
 
@@ -67,7 +67,7 @@ namespace Mono.Linker.Steps {
 						AddToPipeline (GetExternalResolveStep (rsc, asm));
 					} catch (XmlException ex) {
 						/* This could happen if some broken XML file is embedded. */
-						Context.LogMessage ("Error processing {0}: {1}", rsc.Name, ex);
+						Context.LogError ("Error processing {0}: {1}", rsc.Name, ex);
 					}
 				}
 			}

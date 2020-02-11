@@ -428,6 +428,18 @@ namespace Mono.Linker {
 			if (LogMessages && Logger != null)
 				Logger.LogMessage (importance, message, values);
 		}
+
+		public void LogWarning (string message, params object[] values)
+		{
+			if (LogMessages && Logger != null)
+				Logger.LogWarning (message, values);
+		}
+
+		public void LogError (string message, params object[] values)
+		{
+			if (LogMessages && Logger != null)
+				Logger.LogError (message, values);
+		}
 	}
 
 	[Flags]

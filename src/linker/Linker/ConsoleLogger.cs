@@ -7,5 +7,15 @@ namespace Mono.Linker
 		{
 			Console.WriteLine (message, values);
 		}
+
+		public void LogWarning (string message, params object[] values)
+		{
+			Console.WriteLine ("warning : " + message, values);
+		}
+
+		public void LogError (string message, params object[] values)
+		{
+			Console.WriteLine ("error : " + message, values);
+		}
 	}
 }
