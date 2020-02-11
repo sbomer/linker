@@ -128,12 +128,12 @@ namespace analyzer
             if (!isLiteral) {
                 // TODO: consider which location to report.
                 // for now, the location of the specific non-constant argument.
-                var diagnostic = Diagnostic.Create(RuleError, argExpr.GetLocation(), "expected string literal in call to GetMethod");
+                var diagnostic = Diagnostic.Create(RuleWarning, argExpr.GetLocation(), "expected string literal in call to GetMethod");
                 context.ReportDiagnostic(diagnostic);
             }
 
             if (!isTypeOf) {
-                var diagnostic = Diagnostic.Create(RuleError, invocationExpr.Expression.GetLocation(), "expected typeof");
+                var diagnostic = Diagnostic.Create(RuleWarning, invocationExpr.Expression.GetLocation(), "expected typeof");
                 context.ReportDiagnostic(diagnostic);
             }
             return isTypeOf && isLiteral;

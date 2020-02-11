@@ -167,10 +167,67 @@ namespace Mono.Linker.Analysis
 		//     }
 		// }
 
+		// simple holder for integer callgraph representation
+		// does not implement ICallGraph, because it is meant for low-level
+		// and efficient manipulation via direct access to the underlying representation.
+
+		// solution to blame ctors:
+		// an attribute graph, stores set of edges, set of nodes.
+		// edges and nodes have boolean attributes.
+		// edges:
+		//  isAnalyzed
+		//  isVirtualCall
+		//  isCtor->Member dependency?
+		// nodes:
+		//  isInteresting
+		//  isPublic
+
+		// for reporting:
+		//   need to distinguish between an actual call from ctor -> method
+		//   (which may show up in a callstack, or may be analyzed, etc.)
+		//   and "dependency" edge. which says that ctor was called somewhere
+		//   and the method was eventually called.
+		//   later, we may do data flow on this.
+		//   may have multiple edges from a -> b
+		//   some with attributes, some without.
+
+		// algorithm:
+		//   dependency graph =
+		//   conservative callgraph
+		//   - virtual call edges
+		//   - linker-analyzed edges
+		//   + edge from ctor to each member (to blame the ctors)
+		//     when that edge doesn't already exist (after removal above)
+		//     reasoning: we don't want to track both a ctor dependency and a ctor call -> dangerous
+		//     since in that case we always want to report the more direct call -> dangerous.
+    	//   take the dependency graph, reduce it to the nodes/edges that
+		//     are reachable from entry, and reach unsafe.
+		//   report it
+		//     report every path along this reduced dependency graph.
+		//     use edge attributes to say when it is an implicit "blame the ctor" dependency
+		//     use method attributes to say the reason an API was unsafe
+
+		// data:
+		// conservative callgraph
+		//   methods/edges, some edges are virtual
+
+		// can we do this lazily to avoid the full computation?
+		public void ReportDependencies ()
+		{
+
+
+		}
+
 		public void Analyze ()
 		{
 			numInterestingMethods = 0;
 
+			// while (!System.Diagnostics.Debugger.IsAttached) {
+			// 	System.Threading.Thread.Sleep(400);
+			// }
+// 
+			// Debugger.Break();
+			Debug.Assert (intCallGraph.numMethods == callGraph.Methods.Count);
 			interestingReasons = new InterestingReason [intCallGraph.numMethods];
 			isVirtualMethod = new bool [callGraph.Methods.Count];
 			isAnnotatedSafeMethod = new bool [callGraph.Methods.Count];
@@ -222,6 +279,7 @@ namespace Mono.Linker.Analysis
 			var cq = new ConcurrentQueue<AnalyzedStacktrace> ();
 
 			var buckets = new Dictionary<string, int> ();
+			int ico = 0;
 			Action reportAction = () => {
 				// int numCategories = (int)Category.NumCategories;
 				// Debug.Assert(numCategories == Enum.GetNames(typeof(Category)).Length - 1);
@@ -237,7 +295,15 @@ namespace Mono.Linker.Analysis
 							// signals completion
 							break;
 						}
+						// Console.WriteLine("reporting " + (ico++));
+						if (ico % 1000 == 0) {
+							Console.WriteLine("reporting " + ico);
+						}
+						ico++;
 						RecordStacktrace (res);
+//						if (ico > 10000) {
+//							break;
+//						}
 						// ReportStacktraceBuckets(res);
 						if (!buckets.ContainsKey (res.category)) {
 							buckets [res.category] = 1;

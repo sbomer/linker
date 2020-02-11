@@ -9,9 +9,6 @@ namespace Mono.Linker.Analysis
 		public Dictionary<T, int> methodToInt;
 	}
 
-	// simple holder for integer callgraph representation
-	// does not implement ICallGraph, because it is meant for low-level
-	// and efficient manipulation via direct access to the underlying representation.
 	public class IntCallGraph
 	{
 
