@@ -60,6 +60,7 @@ namespace Mono.Linker.Steps {
 		}
 
 		public AnnotationStore Annotations => _context.Annotations;
+		public Recorder Recorder => _context.Recorder;
 		public Tracer Tracer => _context.Tracer;
 
 		public virtual void Process (LinkContext context)
@@ -157,14 +158,17 @@ namespace Mono.Linker.Steps {
 					EnqueueMethod (method);
 		}
 
-		void MarkEntireType (TypeDefinition type)
+		void MarkEntireType (TypeDefinition type, Reason<TypeDefinition, AssemblyDefinition, CustomAttribute> reason)
 		{
 			if (type.HasNestedTypes) {
 				foreach (TypeDefinition nested in type.NestedTypes)
-					MarkEntireType (nested);
+					MarkEntireType (nested, new Reason<TypeDefinition, AssemblyDefinition, CustomAttribute>(type));
 			}
 
-			Annotations.Mark (type);
+			reason.Switch(
+				typeDef => Recorder.MarkEntireTypeNested (type, typeDef),
+				assemblyDef => Recorder.MarkEntireTypeInAssembly (type, assemblyDef),
+				customAttribute => Recorder.MarkEntireTypeForUserDependency (type, customAttribute));
 			MarkCustomAttributes (type);
 			MarkTypeSpecialCustomAttributes (type);
 
@@ -513,7 +517,7 @@ namespace Mono.Linker.Steps {
 			}
 
 			if (member == "*") {
-				MarkEntireType (td);
+				MarkEntireType (td, new Reason<TypeDefinition, AssemblyDefinition, CustomAttribute>(ca));
 				return;
 			}
 
@@ -900,7 +904,7 @@ namespace Mono.Linker.Steps {
 			}
 
 			foreach (TypeDefinition type in assembly.MainModule.Types)
-				MarkEntireType (type);
+				MarkEntireType (type, new Reason<TypeDefinition, AssemblyDefinition, CustomAttribute> (assembly));
 		}
 
 		void ProcessModule (AssemblyDefinition assembly)

@@ -1,4 +1,4 @@
-﻿//
+//
 // LinkContext.cs
 //
 // Author:
@@ -39,6 +39,8 @@ namespace Mono.Linker {
 		virtual public AnnotationStore CreateAnnotationStore (LinkContext context) => new AnnotationStore (context);
 		virtual public MarkingHelpers CreateMarkingHelpers (LinkContext context) => new MarkingHelpers (context);
 		virtual public Tracer CreateTracer (LinkContext context) => new Tracer (context);
+
+		virtual public Recorder CreateRecorder (LinkContext context) => new Recorder (context);
 	}
 
 	public class LinkContext : IDisposable {
@@ -152,6 +154,8 @@ namespace Mono.Linker {
 
 		public Tracer Tracer { get; private set; }
 
+		public Recorder Recorder { get; private set; }
+
 		public IReflectionPatternRecorder ReflectionPatternRecorder { get; set; }
 
 		public string [] ExcludedFeatures { get; set; }
@@ -192,6 +196,7 @@ namespace Mono.Linker {
 			_annotations = factory.CreateAnnotationStore (this);
 			MarkingHelpers = factory.CreateMarkingHelpers (this);
 			Tracer = factory.CreateTracer (this);
+			Recorder = factory.CreateRecorder (this);
 			ReflectionPatternRecorder = new LoggingReflectionPatternRecorder (this);
 			MarkedKnownMembers = new KnownMembers ();
 			StripResources = true;
