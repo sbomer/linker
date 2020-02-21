@@ -779,7 +779,7 @@ namespace Mono.Linker.Steps
 							reachable [index] = true;
 							break;
 						default:
-							Debug.Fail ("Exception handler without leave instruction");
+							//Debug.Fail ("Exception handler without leave instruction");
 							return false;
 						}
 					}

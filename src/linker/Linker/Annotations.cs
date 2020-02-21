@@ -61,6 +61,9 @@ namespace Mono.Linker {
 		protected readonly HashSet<TypeDefinition> marked_instantiated = new HashSet<TypeDefinition> ();
 		protected readonly HashSet<MethodDefinition> indirectly_called = new HashSet<MethodDefinition>();
 
+		private readonly IRuleDependencyRecorder rule_dependency_recorder = new GraphDependencyRecorder ();
+
+		public SearchableDependencyGraph<Node, Edge> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
 
 		public AnnotationStore (LinkContext context) => this.context = context;
 
@@ -152,13 +155,27 @@ namespace Mono.Linker {
 
 		public void Mark (IMetadataTokenProvider provider)
 		{
+			Mark (provider, new MarkReason { kind = MarkReasonKind.Untracked });
+		}
+
+		public void Mark (IMetadataTokenProvider provider, MarkReason reason)
+		{
 			marked.Add (provider);
 			Tracer.AddDependency (provider, true);
+			switch (reason) {
+				// ...
+			}
+			// call into dependency recorder...
 		}
 
 		public void Mark (CustomAttribute attribute)
 		{
 			marked_attributes.Add (attribute);
+		}
+
+		public void Push (IMetadataTokenProvider provider)
+		{
+			Tracer.Push (provider, false);
 		}
 
 		public void MarkAndPush (IMetadataTokenProvider provider)
@@ -445,6 +462,138 @@ namespace Mono.Linker {
 				return derivedInterfaces;
 
 			return null;
+		}
+
+		// every call to Annotations.Mark should ultimately go through one of these helpers,
+		// each of which tracks a "reason" that the item was marked.
+
+		// linker has a CheckProcessed.
+		// to Mark here, we need to be sure that it
+		// doesn't get processed twice.
+		// actually doing Annotations.Mark twice is not the problem.
+		// doing all the process logic is the problem.
+		public void MarkMethodCall (MethodDefinition caller, MethodDefinition callee)
+		{
+			System.Console.WriteLine (caller + " ---> " + callee);
+			rule_dependency_recorder.RecordDirectCall (caller, callee);
+			Mark (callee);
+		}
+
+		public void MarkVirtualMethodCall (MethodDefinition caller, MethodDefinition callee)
+		{
+			rule_dependency_recorder.RecordVirtualCall (caller, callee);
+			System.Console.WriteLine (caller + " -|-> " + callee);
+			Mark (callee);
+			// TODO: see if there are multiple edges between same nodes.
+			// there shouldn't be... maybe?
+		}
+
+		public void MarkUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod)
+		{
+			rule_dependency_recorder.RecordUnanalyzedReflectionCall (source, reflectionMethod);
+		}
+
+		public void MarkFieldOfType (TypeDefinition source, FieldDefinition field)
+		{
+			// ?
+		}
+
+		public void MarkDangerousMethod (MethodDefinition method)
+		{
+			// TODO: get rid of this. it shouldn't be called "mark*"
+			// mutate the reason.
+//			graph.AddNode (GetOrCreateNodeSettingAttributes (method, new NodeInfo { Dangerous = true }));
+			rule_dependency_recorder.RecordDangerousMethod (method);
+		}
+
+		public void MarkEntryType (TypeDefinition type)
+		{
+			context.Annotations.Mark (type);
+			rule_dependency_recorder.RecordEntryType (type);
+		}
+
+		public void MarkNestedType (TypeDefinition declaringType, TypeDefinition nestedType)
+		{
+			context.Annotations.Mark (nestedType);
+			rule_dependency_recorder.RecordNestedType (declaringType, nestedType);
+		}
+
+		public void MarkEntryField (FieldDefinition field)
+		{
+			context.Annotations.Mark (field);
+			rule_dependency_recorder.RecordEntryField (field);
+		}
+
+		public void MarkUserDependencyType (CustomAttribute ca, TypeDefinition type)
+		{
+			context.Annotations.Mark (type);
+			rule_dependency_recorder.RecordUserDependencyType (ca, type);
+		}
+
+		public void MarkEntryMethod (MethodDefinition method)
+		{
+			context.Annotations.Mark (method);
+			rule_dependency_recorder.RecordEntryMethod (method);
+		}
+
+		// non-beforefieldinit or disabled beforefieldinit optimization -> mark type's static ctor for marked type
+		public void MarkTypeStaticConstructor (TypeDefinition type, MethodDefinition cctor)
+		{
+			context.Annotations.Mark (cctor);
+			rule_dependency_recorder.RecordTypeStaticConstructor (type, cctor);
+		}
+
+		// field access -> mark non-empty static ctor (beforefieldinit or not!)
+		public void MarkStaticConstructorForField (FieldDefinition field, MethodDefinition cctor)
+		{
+			context.Annotations.Mark (cctor);
+			rule_dependency_recorder.RecordStaticConstructorForField (field, cctor);
+		}
+
+		public void MarkFieldAccessFromMethod (MethodDefinition method, FieldDefinition field)
+		{
+			context.Annotations.Mark (field);
+			rule_dependency_recorder.RecordFieldAccessFromMethod (method, field);
+		}
+
+
+		public void MarkFieldUntracked (FieldDefinition field)
+		{
+			context.Annotations.Mark (field);
+			rule_dependency_recorder.RecordFieldUntracked (field);
+		}
+
+		public void MarkTypeUntracked (TypeDefinition type)
+		{
+			context.Annotations.Mark (type);
+			rule_dependency_recorder.RecordTypeUntracked (type);
+		}
+
+		// consider un-setting Untracked bit
+		// if we later track it for a particular reason?
+		public void MarkMethodUntracked (MethodDefinition method)
+		{
+			context.Annotations.Mark (method);
+			rule_dependency_recorder.RecordMethodUntracked (method);
+		}
+
+		public void MarkDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type)
+		{
+			context.Annotations.Mark (type);
+			rule_dependency_recorder.RecordDeclaringTypeOfMethod (method, type);
+		}
+
+		public void MarkDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent)
+		{
+			Mark (parent);
+			rule_dependency_recorder.RecordDeclaringTypeOfType (type, parent);
+		}
+
+		public readonly HashSet<AssemblyDefinition> userAssemblies;
+		public void MarkUserAssembly (AssemblyDefinition assembly)
+		{
+			// TODO
+			//userAssemblies.Add (assembly);
 		}
 	}
 }

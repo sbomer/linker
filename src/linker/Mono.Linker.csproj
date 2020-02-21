@@ -6,6 +6,10 @@
     <Version>0.2.0.0</Version>
     <Configurations>Debug;Release</Configurations>
     <LangVersion>latest</LangVersion>
+    <MonoBuild></MonoBuild>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>Portable</DebugType>
+    <Configuration>Debug</Configuration>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(MonoBuild)' == ''">
@@ -48,6 +52,7 @@
 
   <ItemGroup Condition="'$(MonoBuild)' == ''">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="All" Version="1.0.0" />
+    <PackageReference Include="System.Text.Json" Version="4.7.0" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(MonoBuild)' != ''">

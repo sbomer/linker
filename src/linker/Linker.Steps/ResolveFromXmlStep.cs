@@ -137,7 +137,8 @@ namespace Mono.Linker.Steps {
 
 		void MarkAndPreserveAll (TypeDefinition type)
 		{
-			Annotations.MarkAndPush (type);
+			Context.Annotations.MarkEntryType (type);
+			Annotations.Push (type);
 			Annotations.SetPreserve (type, TypePreserve.All);
 
 			if (!type.HasNestedTypes) {
@@ -256,14 +257,16 @@ namespace Mono.Linker.Steps {
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {type.FullName} ({existingLevel}).  Duplicate uses ({duplicateLevel})"); 
 			} 
 
-			Annotations.MarkAndPush (type);
+			Context.Annotations.MarkEntryType (type);
+			Annotations.Push (type);
 			Tracer.AddDirectDependency (this, type);
 
 			if (type.IsNested) {
-				var parent = type;
-				while (parent.IsNested) {
-					parent = parent.DeclaringType;
-					Annotations.Mark (parent);
+				var currentType = type;
+				while (currentType.IsNested) {
+					var parent = currentType.DeclaringType;
+					Context.Annotations.MarkDeclaringTypeOfType (currentType, parent);
+					currentType = parent;
 				}
 			}
 
@@ -358,7 +361,7 @@ namespace Mono.Linker.Steps {
 				if (Annotations.IsMarked (field))
 					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
 				
-				Annotations.Mark (field);
+				Context.Annotations.MarkEntryField (field);
 			} else {
 				AddUnresolveMarker (string.Format ("T: {0}; F: {1}", type, signature));
 			}
@@ -430,7 +433,7 @@ namespace Mono.Linker.Steps {
 			if (Annotations.IsMarked (method)) 
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}"); 
 
-			Annotations.Mark (method);
+			Context.Annotations.MarkEntryMethod (method);
 			Annotations.MarkIndirectlyCalledMethod (method);
 			Tracer.AddDirectDependency (this, method);
 			Annotations.SetAction (method, MethodAction.Parse);
@@ -588,6 +591,7 @@ namespace Mono.Linker.Steps {
 				if (Annotations.IsMarked (property))
 					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {property.FullName}");
 				
+				// do not track properties separately for now.
 				Annotations.Mark (property);
 
 				MarkPropertyAccessors (type, property, accessors);

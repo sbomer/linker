@@ -14,6 +14,7 @@ namespace Mono.Linker.Tests.Cases.Basic {
 			}
 
 			[Kept]
+			//[KeptMethodReason (MarkReasonKind.VirtualCall, typeof (UnusedMethodGetsRemoved), "Main")]
 			public void Method ()
 			{
 			}

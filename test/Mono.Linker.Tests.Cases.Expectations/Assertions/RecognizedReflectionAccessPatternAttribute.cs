@@ -9,15 +9,15 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 			Type accessedItemType, string accessedItemName, Type[] accessedItemParameters)
 		{
 			if (reflectionMethodType == null)
-				throw new ArgumentException ("Value cannot be null or empty.", nameof (reflectionMethodType));
-			if (reflectionMethodName == null)
+				throw new ArgumentNullException (nameof (reflectionMethodType));
+			if (string.IsNullOrEmpty (reflectionMethodName))
 				throw new ArgumentException ("Value cannot be null or empty.", nameof (reflectionMethodName));
 			if (reflectionMethodParameters == null)
-				throw new ArgumentException ("Value cannot be null or empty.", nameof (reflectionMethodParameters));
+				throw new ArgumentNullException (nameof (reflectionMethodParameters));
 
 			if (accessedItemType == null)
-				throw new ArgumentException ("Value cannot be null or empty.", nameof (accessedItemType));
-			if (accessedItemName == null)
+				throw new ArgumentNullException (nameof (accessedItemType));
+			if (string.IsNullOrEmpty (accessedItemName))
 				throw new ArgumentException ("Value cannot be null or empty.", nameof (accessedItemName));
 		}
 
@@ -25,15 +25,15 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 			Type accessedItemType, string accessedItemName, string [] accessedItemParameters)
 		{
 			if (reflectionMethodType == null)
-				throw new ArgumentException ("Value cannot be null or empty.", nameof (reflectionMethodType));
-			if (reflectionMethodName == null)
+				throw new ArgumentNullException (nameof (reflectionMethodType));
+			if (string.IsNullOrEmpty (reflectionMethodName))
 				throw new ArgumentException ("Value cannot be null or empty.", nameof (reflectionMethodName));
 			if (reflectionMethodParameters == null)
-				throw new ArgumentException ("Value cannot be null or empty.", nameof (reflectionMethodParameters));
+				throw new ArgumentNullException (nameof (reflectionMethodParameters));
 
 			if (accessedItemType == null)
-				throw new ArgumentException ("Value cannot be null or empty.", nameof (accessedItemType));
-			if (accessedItemName == null)
+				throw new ArgumentNullException (nameof (accessedItemType));
+			if (string.IsNullOrEmpty (accessedItemName))
 				throw new ArgumentException ("Value cannot be null or empty.", nameof (accessedItemName));
 		}
 	}

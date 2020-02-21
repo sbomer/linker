@@ -22,6 +22,7 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
+using Mono.Cecil;
 
 namespace Mono.Linker
 {
@@ -40,5 +41,37 @@ namespace Mono.Linker
 		/// <remarks>The source and target are typically Cecil metadata objects (MethodDefinition, TypeDefinition, ...)
 		/// but they can also be the linker steps or really any other object.</remarks>
 		void RecordDependency (object source, object target, bool marked);
+	}
+
+	public interface IRuleDependencyRecorder
+	{
+		void RecordDirectCall (MethodDefinition caller, MethodDefinition callee);
+		void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee);
+		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod);
+		void RecordAnalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod);
+
+		void RecordDangerousMethod (MethodDefinition method);
+
+		void RecordEntryType (TypeDefinition type);
+		void RecordEntryField (FieldDefinition field);
+		void RecordEntryMethod (MethodDefinition method);
+
+
+		void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType);
+
+		void RecordUserDependencyType (CustomAttribute customAttribute, TypeDefinition type);
+
+		void RecordTypeStaticConstructor (TypeDefinition type, MethodDefinition cctor);
+		void RecordFieldAccessFromMethod (MethodDefinition method, FieldDefinition field);
+		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
+		void RecordDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type);
+		void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent);
+
+
+		void RecordFieldUntracked (FieldDefinition field);
+		void RecordTypeUntracked (TypeDefinition type);
+		void RecordMethodUntracked (MethodDefinition method);
+
+
 	}
 }

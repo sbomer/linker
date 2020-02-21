@@ -36,13 +36,19 @@ using System.Text.RegularExpressions;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
+using Mono.Linker;
 
 namespace Mono.Linker.Steps {
 
 	public partial class MarkStep : IStep {
 
 		protected LinkContext _context;
-		protected Queue<MethodDefinition> _methods;
+
+		// possible values:
+		// ("directcall", MethodDefinition)
+		// ("virtualcall", MethodDefinition)
+		// null
+		protected Queue<(MethodDefinition, MarkReason)> _methods;
 		protected List<MethodDefinition> _virtual_methods;
 		protected Queue<AttributeProviderPair> _assemblyLevelAttributes;
 		protected Queue<AttributeProviderPair> _lateMarkedAttributes;
@@ -51,7 +57,7 @@ namespace Mono.Linker.Steps {
 
 		public MarkStep ()
 		{
-			_methods = new Queue<MethodDefinition> ();
+			_methods = new Queue<(MethodDefinition, MarkReason)> ();
 			_virtual_methods = new List<MethodDefinition> ();
 			_assemblyLevelAttributes = new Queue<AttributeProviderPair> ();
 			_lateMarkedAttributes = new Queue<AttributeProviderPair> ();
@@ -60,7 +66,6 @@ namespace Mono.Linker.Steps {
 		}
 
 		public AnnotationStore Annotations => _context.Annotations;
-		public Recorder Recorder => _context.Recorder;
 		public Tracer Tracer => _context.Tracer;
 
 		public virtual void Process (LinkContext context)
@@ -119,7 +124,15 @@ namespace Mono.Linker.Steps {
 			if (!Annotations.IsMarked (type))
 				return;
 
-			MarkType (type);
+			// this type has already been marked.
+			// it could only have been marked as an entry type so far.
+			// TODO: assert that the type has previously been marked as an entry type.
+			// no, it might have been marked as declaring type of the entry method.
+			// or even declaring type of a kept type.
+			// TODO: FIX THIS BUG.
+			// we need to track the reason that a type was early-marked,
+			// so that it can be appropriately set here.
+			MarkType (type, new MarkReason { kind = MarkReasonKind.EntryType });
 
 			if (type.HasFields)
 				InitializeFields (type);
@@ -147,28 +160,50 @@ namespace Mono.Linker.Steps {
 		void InitializeFields (TypeDefinition type)
 		{
 			foreach (FieldDefinition field in type.Fields)
-				if (Annotations.IsMarked (field))
-					MarkField (field);
+				if (Annotations.IsMarked (field)) {
+					// TODO: assert that it was previously marked as an entry.
+					MarkField (field, new MarkReason { kind = MarkReasonKind.EntryField });
+				}
 		}
 
 		void InitializeMethods (Collection<MethodDefinition> methods)
 		{
 			foreach (MethodDefinition method in methods)
-				if (Annotations.IsMarked (method))
-					EnqueueMethod (method);
+				if (Annotations.IsMarked (method)) {
+					// this enqueues marked methods in marked types.
+					// can there be marked methods in unmarked types?
+
+					// can get here for a preserveall type (from xml)
+					// which has preserve info applied in MarkType from InitializeType.
+
+					// TODO: assert that it was previously marked as an entry.
+					EnqueueMethod (method, new MarkReason { kind = MarkReasonKind.EntryMethod });
+				}
 		}
 
-		void MarkEntireType (TypeDefinition type, Reason<TypeDefinition, AssemblyDefinition, CustomAttribute> reason)
+		// this logic can run multiple times... :(
+		void MarkEntireType (TypeDefinition type, MarkReason reason)
 		{
 			if (type.HasNestedTypes) {
 				foreach (TypeDefinition nested in type.NestedTypes)
-					MarkEntireType (nested, new Reason<TypeDefinition, AssemblyDefinition, CustomAttribute>(type));
+					MarkEntireType (nested, new MarkReason { kind = MarkReasonKind.NestedType, source = type });
 			}
 
-			reason.Switch(
-				typeDef => Recorder.MarkEntireTypeNested (type, typeDef),
-				assemblyDef => Recorder.MarkEntireTypeInAssembly (type, assemblyDef),
-				customAttribute => Recorder.MarkEntireTypeForUserDependency (type, customAttribute));
+			switch (reason.kind) {
+			case MarkReasonKind.EntryType:
+				Annotations.MarkEntryType (type);
+				break;
+			case MarkReasonKind.NestedType:
+				Annotations.MarkNestedType ((TypeDefinition)reason.source, type);
+				break;
+			case MarkReasonKind.UserDependencyType:
+				Annotations.MarkUserDependencyType ((CustomAttribute)reason.source, type);
+				break;
+			case MarkReasonKind.Untracked:
+				Annotations.MarkTypeUntracked (type);
+				break;
+			}
+
 			MarkCustomAttributes (type);
 			MarkTypeSpecialCustomAttributes (type);
 
@@ -182,7 +217,7 @@ namespace Mono.Linker.Steps {
 
 			if (type.HasFields) {
 				foreach (FieldDefinition field in type.Fields) {
-					MarkField (field);
+					MarkField (field, new MarkReason { kind = MarkReasonKind.FieldOfType, source = type });
 				}
 			}
 
@@ -190,7 +225,7 @@ namespace Mono.Linker.Steps {
 				foreach (MethodDefinition method in type.Methods) {
 					Annotations.Mark (method);
 					Annotations.SetAction (method, MethodAction.ForceParse);
-					EnqueueMethod (method);
+					EnqueueMethod (method, new MarkReason { kind = MarkReasonKind.FieldOfType, source = type });
 				}
 			}
 
@@ -260,10 +295,10 @@ namespace Mono.Linker.Steps {
 		void ProcessQueue ()
 		{
 			while (!QueueIsEmpty ()) {
-				MethodDefinition method = _methods.Dequeue ();
+				(MethodDefinition method, MarkReason reason) = _methods.Dequeue ();
 				Tracer.Push (method);
 				try {
-					ProcessMethod (method);
+					ProcessMethod (method, reason);
 				} catch (Exception e) {
 					throw new MarkException (string.Format ("Error processing method: '{0}' in assembly: '{1}'", method.FullName, method.Module.Name), e, method);
 				} finally {
@@ -277,9 +312,14 @@ namespace Mono.Linker.Steps {
 			return _methods.Count == 0;
 		}
 
-		protected virtual void EnqueueMethod (MethodDefinition method)
+		private void EnqueueMethod (MethodDefinition method)
 		{
-			_methods.Enqueue (method);
+			_methods.Enqueue ((method, new MarkReason { kind = MarkReasonKind.Untracked }));
+		}
+
+		protected virtual void EnqueueMethod (MethodDefinition method, MarkReason reason)
+		{
+			_methods.Enqueue ((method, reason));
 		}
 
 		void ProcessVirtualMethods ()
@@ -517,7 +557,7 @@ namespace Mono.Linker.Steps {
 			}
 
 			if (member == "*") {
-				MarkEntireType (td, new Reason<TypeDefinition, AssemblyDefinition, CustomAttribute>(ca));
+				MarkEntireType (td, new MarkReason { kind = MarkReasonKind.UserDependencyType, source = ca });
 				return;
 			}
 
@@ -667,10 +707,15 @@ namespace Mono.Linker.Steps {
 			return true;
 		}
 
-		protected void MarkStaticConstructor (TypeDefinition type)
+		protected void MarkStaticConstructor (TypeDefinition type, MarkReason reason)
 		{
-			if (MarkMethodIf (type.Methods, IsNonEmptyStaticConstructor) != null)
-				Annotations.SetPreservedStaticCtor (type);
+			foreach (var method in type.Methods) {
+				if (IsNonEmptyStaticConstructor (method)) {
+					MethodDefinition cctor = MarkMethod (method, reason);
+					if (cctor != null)
+						Annotations.SetPreservedStaticCtor (type);
+				}
+			}
 		}
 
 		protected virtual bool ShouldMarkTopLevelCustomAttribute (AttributeProviderPair app, MethodDefinition resolvedConstructor)
@@ -904,7 +949,7 @@ namespace Mono.Linker.Steps {
 			}
 
 			foreach (TypeDefinition type in assembly.MainModule.Types)
-				MarkEntireType (type, new Reason<TypeDefinition, AssemblyDefinition, CustomAttribute> (assembly));
+				MarkEntireType (type, new MarkReason { kind = MarkReasonKind.EntryType });
 		}
 
 		void ProcessModule (AssemblyDefinition assembly)
@@ -1005,7 +1050,12 @@ namespace Mono.Linker.Steps {
 			return markOccurred;
 		}
 
-		protected void MarkField (FieldReference reference)
+		protected void MarkField (FieldReference field)
+		{
+			MarkField (field, new MarkReason { kind = MarkReasonKind.Untracked });
+		}
+
+		protected void MarkField (FieldReference reference, MarkReason reason)
 		{
 			if (reference.DeclaringType is GenericInstanceType)
 				MarkType (reference.DeclaringType);
@@ -1017,10 +1067,20 @@ namespace Mono.Linker.Steps {
 				return;
 			}
 
-			MarkField (field);
+			MarkField (field, reason);
 		}
 
+		// Mark* methods should have the semantics that they ultimately
+		// call Annotations.Mark, and they always record some kind of dependency using Recorder.
+		// they can additionally have logic that is only ever done once per method.
+		// which is Process*.
+
 		void MarkField (FieldDefinition field)
+		{
+			MarkField (field, new MarkReason { kind = MarkReasonKind.Untracked });
+		}
+
+		void MarkField (FieldDefinition field, MarkReason reason)
 		{
 			if (CheckProcessed (field))
 				return;
@@ -1033,14 +1093,21 @@ namespace Mono.Linker.Steps {
 
 			var parent = field.DeclaringType;
 			if (!Annotations.HasPreservedStaticCtor (parent))
-				MarkStaticConstructor (parent);
+				MarkStaticConstructor (parent, new MarkReason { kind = MarkReasonKind.FieldCctor, source = field });
 
 			if (Annotations.HasSubstitutedInit (field)) {
 				Annotations.SetPreservedStaticCtor (parent);
 				Annotations.SetSubstitutedInit (parent);
 			}
 
-			Annotations.Mark (field);
+			switch (reason.kind) {
+			case MarkReasonKind.FieldAccess:
+				Annotations.MarkFieldAccessFromMethod ((MethodDefinition)reason.source, field);
+				break;
+			case MarkReasonKind.Untracked:
+				Annotations.MarkFieldUntracked (field);
+				break;
+			}
 		}
 
 		protected virtual bool IgnoreScope (IMetadataScope scope)
@@ -1064,6 +1131,11 @@ namespace Mono.Linker.Steps {
 
 		protected virtual TypeDefinition MarkType (TypeReference reference)
 		{
+			return MarkType (reference, new MarkReason { kind = MarkReasonKind.Untracked });
+		}
+
+		protected virtual TypeDefinition MarkType (TypeReference reference, MarkReason reason)
+		{
 			if (reference == null)
 				return null;
 
@@ -1083,6 +1155,15 @@ namespace Mono.Linker.Steps {
 			if (type == null) {
 				HandleUnresolvedType (reference);
 				return null;
+			}
+
+			switch (reason.kind) {
+			case MarkReasonKind.DeclaringTypeOfMethod:
+				Annotations.MarkDeclaringTypeOfMethod ((MethodDefinition)reason.source, type);
+				break;
+			case MarkReasonKind.Untracked:
+				Annotations.MarkTypeUntracked (type);
+				break;
 			}
 
 			if (CheckProcessed (type))
@@ -1146,7 +1227,7 @@ namespace Mono.Linker.Steps {
 			if (type.HasMethods) {
 				MarkMethodsIf (type.Methods, IsVirtualNeededByTypeDueToPreservedScope);
 				if (ShouldMarkTypeStaticConstructor (type))
-					MarkStaticConstructor (type);
+					MarkStaticConstructor (type, new MarkReason { kind = MarkReasonKind.TypeCctor, source = type });
 
 				if (_context.IsFeatureExcluded ("deserialization"))
 					MarkMethodsIf (type.Methods, HasOnSerializeAttribute);
@@ -1157,8 +1238,6 @@ namespace Mono.Linker.Steps {
 			DoAdditionalTypeProcessing (type);
 
 			Tracer.Pop ();
-
-			Annotations.Mark (type);
 
 			ApplyPreserveInfo (type);
 
@@ -1356,6 +1435,7 @@ namespace Mono.Linker.Steps {
 						}
 					}
 
+					// oh.. this is if we don't match any members explicitly.
 					while (type != null) {
 						MarkMethods (type);
 						MarkFields (type, includeStatic: true);
@@ -1883,7 +1963,12 @@ namespace Mono.Linker.Steps {
 			Annotations.MarkIndirectlyCalledMethod (method);
 		}
 
-		protected virtual MethodDefinition MarkMethod (MethodReference reference)
+		private MethodDefinition MarkMethod (MethodReference reference)
+		{
+			return MarkMethod (reference, new MarkReason { kind = MarkReasonKind.Untracked });
+		}
+
+		protected virtual MethodDefinition MarkMethod (MethodReference reference, MarkReason reason)
 		{
 			reference = GetOriginalMethod (reference);
 
@@ -1908,7 +1993,7 @@ namespace Mono.Linker.Steps {
 				if (Annotations.GetAction (method) == MethodAction.Nothing)
 					Annotations.SetAction (method, MethodAction.Parse);
 
-				EnqueueMethod (method);
+				EnqueueMethod (method, reason);
 			} finally {
 				Tracer.Pop ();
 			}
@@ -1936,13 +2021,35 @@ namespace Mono.Linker.Steps {
 			return method;
 		}
 
-		protected virtual void ProcessMethod (MethodDefinition method)
+		protected virtual void ProcessMethod (MethodDefinition method, MarkReason reason)
 		{
+			// note the method call, even if we have already processed it.
+
+			// TODO: replace this with a reason!
+			// need to mark the method call EVEN if we have already processed the method!
+			switch (reason.kind) {
+			case MarkReasonKind.DirectCall:
+				Annotations.MarkMethodCall ((MethodDefinition)reason.source, method);
+				break;
+			case MarkReasonKind.VirtualCall:
+				Annotations.MarkVirtualMethodCall ((MethodDefinition)reason.source, method);
+				break;
+			case MarkReasonKind.FieldCctor:
+				Annotations.MarkStaticConstructorForField ((FieldDefinition)reason.source, method);
+				break;
+			case MarkReasonKind.TypeCctor:
+				Annotations.MarkTypeStaticConstructor ((TypeDefinition)reason.source, method);
+				break;
+			case MarkReasonKind.Untracked:
+				Annotations.MarkMethodUntracked (method);
+				break;
+			}
+
 			if (CheckProcessed (method))
 				return;
 
 			Tracer.Push (method);
-			MarkType (method.DeclaringType);
+			MarkType (method.DeclaringType, new MarkReason { kind = MarkReasonKind.DeclaringTypeOfMethod, source = method });
 			MarkCustomAttributes (method);
 			MarkSecurityDeclarations (method);
 
@@ -1995,8 +2102,6 @@ namespace Mono.Linker.Steps {
 				MarkMethodBody (method.Body);
 
 			DoAdditionalMethodProcessing (method);
-
-			Annotations.Mark (method);
 
 			ApplyPreserveMethods (method);
 			Tracer.Pop ();
@@ -2228,6 +2333,9 @@ namespace Mono.Linker.Steps {
 			MarkMethod (method);
 		}
 
+		// may be called multiple times. can exit early, if it's unreachable.
+		// gets parsed if forceparse, or it's parse and link/copy, etc.
+		// and the method is marked.
 		protected virtual void MarkMethodBody (MethodBody body)
 		{
 			if (_context.IsOptimizationEnabled (CodeOptimizations.UnreachableBodies, body.Method) && IsUnreachableBody (body)) {
@@ -2243,8 +2351,10 @@ namespace Mono.Linker.Steps {
 				if (eh.HandlerType == ExceptionHandlerType.Catch)
 					MarkType (eh.CatchType);
 
+			// we get here for MarkMethodBody whenever it's reachable.
+			// with unreachablebodies, that means it's static or instantiated or not worth converting to throw
 			foreach (Instruction instruction in body.Instructions)
-				MarkInstruction (instruction);
+				MarkInstruction (instruction, body.Method);
 
 			MarkInterfacesNeededByBodyStack (body);
 
@@ -2276,20 +2386,38 @@ namespace Mono.Linker.Steps {
 				MarkInterfaceImplementation (implementation);
 		}
 
-		protected virtual void MarkInstruction (Instruction instruction)
+		// the "reason" we mark an instruction is that we decided to parse the body, and it's reachable (if the unreachable bodies opt is enabled)
+		protected virtual void MarkInstruction (Instruction instruction, MethodDefinition method)
 		{
 			switch (instruction.OpCode.OperandType) {
 			case OperandType.InlineField:
-				MarkField ((FieldReference) instruction.Operand);
+				MarkField ((FieldReference) instruction.Operand, new MarkReason { kind = MarkReasonKind.FieldAccess, source = method });
 				break;
 			case OperandType.InlineMethod:
-				MarkMethod ((MethodReference) instruction.Operand);
+				MarkReason reason;
+				switch (instruction.OpCode.Code) {
+				case Code.Jmp:
+				case Code.Call:
+				case Code.Newobj:
+					reason = new MarkReason { kind = MarkReasonKind.DirectCall, source = method };
+					break;
+				case Code.Callvirt:
+					reason = new MarkReason { kind = MarkReasonKind.VirtualCall, source = method };
+					break;
+				default:
+					reason = new MarkReason { kind = MarkReasonKind.Untracked, source = null };
+					break;
+				}
+				MarkMethod ((MethodReference) instruction.Operand, reason);
 				break;
 			case OperandType.InlineTok:
+				// only ldtoken takes an inlinetok.
 				object token = instruction.Operand;
 				if (token is TypeReference typeReference)
 					MarkType (typeReference);
 				else if (token is MethodReference methodReference)
+					// TODO: is inlinetok guaranteed to be a call?
+					// NO! it's a ldtoken.
 					MarkMethod (methodReference);
 				else
 					MarkField ((FieldReference) token);
@@ -2472,6 +2600,14 @@ namespace Mono.Linker.Steps {
 #endif
 
 				_context.ReflectionPatternRecorder.UnrecognizedReflectionAccessPattern (MethodCalling, MethodCalled, message);
+
+				// TODO: move this out to where the method is actually marked.
+				// this marks the target as dangerous so it will show up
+				// TODO: eventually, all the APIs that we even attempt to analyze will already be considered dangerous,
+				// and we can get rid of this line.
+				_context.Annotations.MarkDangerousMethod (MethodCalled);
+				// this sets up an edge to the dangerous reflection method.
+				_context.Annotations.MarkUnanalyzedReflectionCall (MethodCalling, MethodCalled);
 			}
 
 			public void Dispose ()

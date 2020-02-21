@@ -617,9 +617,12 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 
 		void VerifyRecordedDependencies (AssemblyDefinition original, TestDependencyRecorder dependencyRecorder)
 		{
+			// why typeWithRemoveInAssembly???
 			foreach (var typeWithRemoveInAssembly in original.AllDefinedTypes ()) {
 				foreach (var attr in typeWithRemoveInAssembly.CustomAttributes) {
 					if (attr.AttributeType.Resolve ().Name == nameof (DependencyRecordedAttribute)) {
+						// TODO: what if it's not using the string ctor??
+						// can't this just outright crash?
 						var expectedSource = (string)attr.ConstructorArguments [0].Value;
 						var expectedTarget = (string)attr.ConstructorArguments [1].Value;
 						var expectedMarked = (string)attr.ConstructorArguments [2].Value;
@@ -654,6 +657,29 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 			static string DependencyToString(TestDependencyRecorder.Dependency dependency)
 			{
 				return $"{dependency.Source} -> {dependency.Target} Marked: {dependency.Marked}";
+			}
+
+			foreach (var typeInAssembly in original.AllDefinedTypes ()) {
+				foreach (var attr in typeInAssembly.CustomAttributes) {
+					// TODO: check other reasons!
+					if (attr.AttributeType.Resolve ().Name == nameof (KeptMethodReasonAttribute)) {
+						var reasonKind = (MarkReasonKind)attr.ConstructorArguments [0].Value;
+						// problem: there will be a MarkReasonKind for different assemblies.
+						// probably need to add a ref to the linker project.
+						switch (reasonKind) {
+						case MarkReasonKind.VirtualCall:
+							var expectedSourceType = (Type)attr.ConstructorArguments [0].Value;
+							var expectedSourceMethod = (string)attr.ConstructorArguments [1].Value;
+							break;
+
+							// check that there is a matching dependency.
+							// if there is non, assert.
+							// if (!dependencyRecorder.)
+						default:
+							throw new NotSupportedException ("checking of this reason kind is not yet supported.");
+						}
+					}
+				}
 			}
 		}
 

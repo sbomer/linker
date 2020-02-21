@@ -151,7 +151,8 @@ namespace Mono.Linker.Steps
 				return;
 			}
 
-			context.Annotations.MarkAndPush (type);
+			context.Annotations.MarkEntryType (type);
+			context.Annotations.Push (type);
 
 			if (type.HasFields)
 				MarkFields (context, type.Fields, rootVisibility);
@@ -170,8 +171,13 @@ namespace Mono.Linker.Steps
 
 			Tracer.Push (assembly);
 
-			Annotations.Mark (assembly.EntryPoint.DeclaringType);
+			MethodDefinition entryPoint = assembly.EntryPoint;
+			// the "reason" we mark this type is because it's the declaring type of the entry method.
+			Context.Annotations.MarkDeclaringTypeOfMethod (entryPoint, entryPoint.DeclaringType);
 
+			Context.Annotations.MarkUserAssembly (assembly);
+
+			// this already marks the method as an entry point.
 			MarkMethod (Context, assembly.EntryPoint, MethodAction.Parse, RootVisibility.Any);
 
 			Tracer.Pop ();
@@ -186,7 +192,7 @@ namespace Mono.Linker.Steps
 					_ => true
 				};
 				if (markField) {
-					context.Annotations.Mark (field);
+					context.Annotations.MarkEntryField (field);
 				}
 			}
 		}
@@ -206,7 +212,7 @@ namespace Mono.Linker.Steps
 			};
 
 			if (markMethod) {
-				context.Annotations.Mark (method);
+				context.Annotations.MarkEntryMethod (method);
 				context.Annotations.SetAction (method, action);
 			}
 		}

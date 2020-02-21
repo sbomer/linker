@@ -933,6 +933,7 @@ namespace Mono.Linker {
 			p.AppendStep (new CodeRewriterStep ());
 			p.AppendStep (new CleanStep ());
 			p.AppendStep (new RegenerateGuidStep ());
+			p.AppendStep (new AnalysisStep ());
 			p.AppendStep (new OutputStep ());
 			return p;
 		}

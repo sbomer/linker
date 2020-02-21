@@ -86,6 +86,8 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 				};
 			}
 
+			
+
 			if (_testCaseTypeDefinition.CustomAttributes.Any (attr =>
 					attr.AttributeType.Name == nameof (VerifyAllReflectionAccessPatternsAreValidatedAttribute))
 				|| _testCaseTypeDefinition.AllMethods ().Any (method => method.CustomAttributes.Any (attr =>
