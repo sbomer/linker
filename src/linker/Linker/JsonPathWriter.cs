@@ -17,7 +17,7 @@ namespace Mono.Linker
 	//     )
 
 	public class Output {
-		public Dictionary<Node, DestinationSet> destinationSets;
+		public Dictionary<Node<NodeInfo>, DestinationSet> destinationSets;
 	}
 
 	public class DestinationSet {
@@ -25,15 +25,15 @@ namespace Mono.Linker
 	}
 
 	public class VirtualTrace {
-		public List<Edge> edges;
-		public Node startNode;
+		public List<Edge<NodeInfo, EdgeInfo>> edges;
+		public Node<NodeInfo> startNode;
 	}
 
 	public class JsonPathWriter {
-		private readonly SearchableDependencyGraph<Node, Edge> graph;
+		private readonly SearchableDependencyGraph<NodeInfo, EdgeInfo> graph;
 		private readonly Stream stream;
 		private readonly LinkContext context;
-		public JsonPathWriter (SearchableDependencyGraph<Node, Edge> graph, Stream stream, LinkContext context) {
+		public JsonPathWriter (SearchableDependencyGraph<NodeInfo, EdgeInfo> graph, Stream stream, LinkContext context) {
 			this.graph = graph;
 			this.stream = stream;
 			this.context = context;
@@ -41,7 +41,7 @@ namespace Mono.Linker
 
 		// TODO: abstract this to not depend on node type.
 		// it goes through IsStart interface, but directly accesses value.
-		private List<string> FormatTrace (Node start, List<Edge> edges) {
+		private List<string> FormatTrace (Node<NodeInfo> start, List<Edge<NodeInfo, EdgeInfo>> edges) {
 			System.Diagnostics.Debug.Assert (start.IsStart ());
 			// now, might not be an entry. could also be untracked.
 			var trace = new List<string> ();
@@ -55,7 +55,7 @@ namespace Mono.Linker
 			}
 
 			// non-zero-length path
-			Node end = edges [0].To;
+			Node<NodeInfo> end = edges [0].To;
 			System.Diagnostics.Debug.Assert (end.Dangerous);
 			System.Diagnostics.Debug.Assert (end.Value is MethodDefinition);
 
@@ -177,7 +177,7 @@ namespace Mono.Linker
 			return collapsedTrace;
 		}
 
-		bool IsUserCode (Node node) {
+		bool IsUserCode (Node<NodeInfo> node) {
 			// TODO: determine whether it's part of:
 			// context.Recorder.userAssemblies.
 			// find assembly.

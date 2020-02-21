@@ -63,7 +63,7 @@ namespace Mono.Linker {
 
 		private readonly IRuleDependencyRecorder rule_dependency_recorder = new GraphDependencyRecorder ();
 
-		public SearchableDependencyGraph<Node, Edge> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
+		public SearchableDependencyGraph<NodeInfo, EdgeInfo> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
 
 		public AnnotationStore (LinkContext context) => this.context = context;
 
@@ -593,7 +593,7 @@ namespace Mono.Linker {
 		public void MarkUserAssembly (AssemblyDefinition assembly)
 		{
 			// TODO
-			//userAssemblies.Add (assembly);
+			// userAssemblies.Add (assembly);
 		}
 	}
 }
