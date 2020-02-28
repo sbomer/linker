@@ -15,12 +15,12 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 
 	[AttributeUsage (AttributeTargets.Method, AllowMultiple = true, Inherited = false)]
 	public class KeptMethodReasonAttribute : KeptReasonAttribute {
-		public KeptMethodReasonAttribute (MarkReasonKind kind, Type methodType, string methodName) {
+		public KeptMethodReasonAttribute (DependencyKind kind, Type methodType, string methodName) {
 			switch (kind) {
-			case MarkReasonKind.DirectCall:
+			case DependencyKind.DirectCall:
 				// ok
 				break;
-			case MarkReasonKind.VirtualCall:
+			case DependencyKind.VirtualCall:
 				// ok
 				break;
 			default:
@@ -33,12 +33,12 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 				throw new ArgumentException ("Value cannot be null or empty.", nameof (methodName));
 		}
 
-		public KeptMethodReasonAttribute (MarkReasonKind kind) {
+		public KeptMethodReasonAttribute (DependencyKind kind) {
 			switch (kind) {
-			case MarkReasonKind.EntryMethod:
+			case DependencyKind.EntryMethod:
 				// ok
 				break;
-			case MarkReasonKind.Untracked:
+			case DependencyKind.Untracked:
 				// ok
 				break;
 			default:
@@ -46,9 +46,9 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 			}
 		}
 
-		public KeptMethodReasonAttribute (MarkReasonKind kind, Type type) {
-			if (kind != MarkReasonKind.TypeCctor)
-				throw new ArgumentException ("this ctor only usable with typecctor dependency.");
+		public KeptMethodReasonAttribute (DependencyKind kind, Type type) {
+//			if (kind != MarkReasonKind.TypeCctor)
+//				throw new ArgumentException ("this ctor only usable with typecctor dependency.");
 			if (type == null)
 				throw new ArgumentNullException (nameof (type));
 		}

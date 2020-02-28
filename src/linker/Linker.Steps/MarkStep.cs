@@ -44,11 +44,7 @@ namespace Mono.Linker.Steps {
 
 		protected LinkContext _context;
 
-		// possible values:
-		// ("directcall", MethodDefinition)
-		// ("virtualcall", MethodDefinition)
-		// null
-		protected Queue<(MethodDefinition, MarkReason)> _methods;
+		protected Queue<(MethodDefinition, DependencyInfo)> _methods;
 		protected List<MethodDefinition> _virtual_methods;
 		protected Queue<AttributeProviderPair> _assemblyLevelAttributes;
 		protected Queue<AttributeProviderPair> _lateMarkedAttributes;
@@ -57,7 +53,7 @@ namespace Mono.Linker.Steps {
 
 		public MarkStep ()
 		{
-			_methods = new Queue<(MethodDefinition, MarkReason)> ();
+			_methods = new Queue<(MethodDefinition, DependencyInfo)> ();
 			_virtual_methods = new List<MethodDefinition> ();
 			_assemblyLevelAttributes = new Queue<AttributeProviderPair> ();
 			_lateMarkedAttributes = new Queue<AttributeProviderPair> ();
@@ -72,6 +68,8 @@ namespace Mono.Linker.Steps {
 		{
 			_context = context;
 
+//			Console.Error.WriteLine ("waiting to process MarkStep");
+//			Console.ReadLine ();
 			Initialize ();
 			Process ();
 			Complete ();
@@ -121,8 +119,8 @@ namespace Mono.Linker.Steps {
 					InitializeType (nested);
 			}
 
-			if (!Annotations.IsMarked (type))
-				return;
+			if (Annotations.IsMarked (type))
+				MarkType (type, new DependencyInfo { kind = DependencyKind.EntryType });
 
 			// this type has already been marked.
 			// it could only have been marked as an entry type so far.
@@ -132,7 +130,13 @@ namespace Mono.Linker.Steps {
 			// TODO: FIX THIS BUG.
 			// we need to track the reason that a type was early-marked,
 			// so that it can be appropriately set here.
-			MarkType (type, new MarkReason { kind = MarkReasonKind.EntryType });
+
+			// if this was the declaring type of the entry point method,
+			// want to trigger its cctor from entry method.
+
+			// xml roots are incompatible with proper tracing.
+			// how to report them?
+			// just report all methods as potentially called.
 
 			if (type.HasFields)
 				InitializeFields (type);
@@ -162,7 +166,7 @@ namespace Mono.Linker.Steps {
 			foreach (FieldDefinition field in type.Fields)
 				if (Annotations.IsMarked (field)) {
 					// TODO: assert that it was previously marked as an entry.
-					MarkField (field, new MarkReason { kind = MarkReasonKind.EntryField });
+					MarkField (field, new DependencyInfo { kind = DependencyKind.EntryField });
 				}
 		}
 
@@ -177,31 +181,48 @@ namespace Mono.Linker.Steps {
 					// which has preserve info applied in MarkType from InitializeType.
 
 					// TODO: assert that it was previously marked as an entry.
-					EnqueueMethod (method, new MarkReason { kind = MarkReasonKind.EntryMethod });
+					// we don't really want to do this twice...
+					// maybe we can just get rid of tracing from the earlier steps?
+					// we mark it once up-front. (early marking)
+					// then we actually process it again (and mark it as well)
+
+					EnqueueMethod (method, new DependencyInfo { kind = DependencyKind.EntryMethod });
 				}
 		}
 
 		// this logic can run multiple times... :(
-		void MarkEntireType (TypeDefinition type, MarkReason reason)
+		void MarkEntireType (TypeDefinition type, DependencyInfo reason)
 		{
 			if (type.HasNestedTypes) {
 				foreach (TypeDefinition nested in type.NestedTypes)
-					MarkEntireType (nested, new MarkReason { kind = MarkReasonKind.NestedType, source = type });
+					MarkEntireType (nested, new DependencyInfo { kind = DependencyKind.NestedType, source = type });
 			}
 
 			switch (reason.kind) {
-			case MarkReasonKind.EntryType:
-				Annotations.MarkEntryType (type);
+			case DependencyKind.EntryAssembly:
+				//Annotations.MarkEntryType (type);
+				// we won't get here unless a whole assembly is marked.
+				// in that case, record it as an entry
+				// can get here
+				// this means we got here from a copy/save assembly.
+				// don't have an entryinfo for these yet.
+				// mark as an entry type, but without entry info.
+				// _context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.Unknown, source = null, entry = type });
+				//Annotations.MarkEntryType (type);
+				// this is the one place where MarkStep creates an EntryInfo.
+				_context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.AssemblyAction, source = reason.source, entry = type });
 				break;
-			case MarkReasonKind.NestedType:
+			case DependencyKind.NestedType:
 				Annotations.MarkNestedType ((TypeDefinition)reason.source, type);
 				break;
-			case MarkReasonKind.UserDependencyType:
+			case DependencyKind.UserDependencyType:
 				Annotations.MarkUserDependencyType ((CustomAttribute)reason.source, type);
 				break;
-			case MarkReasonKind.Untracked:
+			case DependencyKind.Untracked:
 				Annotations.MarkTypeUntracked (type);
 				break;
+			default:
+				throw new NotImplementedException ("don't support kind " + reason.kind);
 			}
 
 			MarkCustomAttributes (type);
@@ -217,7 +238,7 @@ namespace Mono.Linker.Steps {
 
 			if (type.HasFields) {
 				foreach (FieldDefinition field in type.Fields) {
-					MarkField (field, new MarkReason { kind = MarkReasonKind.FieldOfType, source = type });
+					MarkField (field);
 				}
 			}
 
@@ -225,7 +246,14 @@ namespace Mono.Linker.Steps {
 				foreach (MethodDefinition method in type.Methods) {
 					Annotations.Mark (method);
 					Annotations.SetAction (method, MethodAction.ForceParse);
-					EnqueueMethod (method, new MarkReason { kind = MarkReasonKind.FieldOfType, source = type });
+					// we don't have a particular reason this method can be called...
+					// so don't track it.
+					// can only get here
+					// because copy/save assembly caused everything in it to be
+					// marked.
+					// unknown entry reason for now.
+					// untracked dependency.
+					EnqueueMethod (method);
 				}
 			}
 
@@ -295,7 +323,7 @@ namespace Mono.Linker.Steps {
 		void ProcessQueue ()
 		{
 			while (!QueueIsEmpty ()) {
-				(MethodDefinition method, MarkReason reason) = _methods.Dequeue ();
+				(MethodDefinition method, DependencyInfo reason) = _methods.Dequeue ();
 				Tracer.Push (method);
 				try {
 					ProcessMethod (method, reason);
@@ -314,10 +342,10 @@ namespace Mono.Linker.Steps {
 
 		private void EnqueueMethod (MethodDefinition method)
 		{
-			_methods.Enqueue ((method, new MarkReason { kind = MarkReasonKind.Untracked }));
+			_methods.Enqueue ((method, new DependencyInfo { kind = DependencyKind.Untracked }));
 		}
 
-		protected virtual void EnqueueMethod (MethodDefinition method, MarkReason reason)
+		protected virtual void EnqueueMethod (MethodDefinition method, DependencyInfo reason)
 		{
 			_methods.Enqueue ((method, reason));
 		}
@@ -367,13 +395,18 @@ namespace Mono.Linker.Steps {
 				return;
 
 			foreach (OverrideInformation @override in overrides)
-				ProcessOverride (@override);
+				ProcessOverride (@override, method);
 		}
 
-		void ProcessOverride (OverrideInformation overrideInformation)
+		void ProcessOverride (OverrideInformation overrideInformation, MethodDefinition virtualMethod)
 		{
+			// TODO: is it guaranteed that method is the same as the virtual method we are processing?
 			var method = overrideInformation.Override;
 			var @base = overrideInformation.Base;
+			// System.Diagnostics.Debug.Assert (method == virtualMethod);
+			if (method != virtualMethod) {
+				Console.Error.WriteLine("override processing for " + method.ToString() + " gives override: " + method.ToString() + " of " + @base.ToString());
+			}
 			if (!Annotations.IsMarked (method.DeclaringType))
 				return;
 
@@ -393,7 +426,64 @@ namespace Mono.Linker.Steps {
 			if (!isInstantiated && !@base.IsAbstract && _context.IsOptimizationEnabled (CodeOptimizations.OverrideRemoval, method))
 				return;
 
-			MarkMethod (method);
+			// only track instantiations if override removal is enabled.
+			// if it's disabled, all overrides are kept, so there's no instantiation site to blame.
+			if (_context.IsOptimizationEnabled (CodeOptimizations.OverrideRemoval)) {
+				if (isInstantiated) {
+					MarkMethod (method, new DependencyInfo { kind = DependencyKind.OverrideOnInstantiatedType, source = method.DeclaringType });
+				} else if (@base.IsAbstract) {
+					MarkMethod (method); // don't track this dependency yet.
+				}
+			} else {
+				// if it's disabled, all overrides of called methods are kept.
+				// there's nothing to blame but the called method.
+				MarkMethod (method, new DependencyInfo { kind = DependencyKind.Override, source = @base });
+			}
+
+			// here:
+			// depending on why the type was instantiated, we may want to track dependencies differently.
+			// if instantiated due to ctor call, would want an edge ctor -> virtual method
+			// if instantiated because it's an interface... there is no ctor.
+			// general thing that works: edge from type to the override
+
+			// this is where we mark an override of a virtual method.
+			// BUT we don't know WHY whe virtual itself was marked yet.
+			// maybe because it was called, maybe something else.
+			// we only want to track overrides if we know that this method has been called.
+			// we at this point want there to be an edge from the original caller
+			// to this method.
+			// need to remember the original caller.
+			// if we ever make this more accurate, the actual callers would be present.
+			// but here, ANY caller to the base method needs to be updated.
+			// but there's no way we will have that information at this point.
+			// if we mark the target for a calvirt...
+			// do we make its mark reason depend on the reason for marking the method itself?
+			// when do we want to create an edge from a virtual to an override?
+			// whenever the linker keeps it? or for more specific reasons?
+			// the linker should only keep it if... it's really necessary.
+			// for now, always track overrides.
+
+			// because marking a type instantiated goes through annotations, when we check it,
+			// it no longer has a reason for being instantiated.
+			// -> give it a reason (track more stuff for instantiated types)
+			// -> or just have a type -> method dependency for instantiated types
+			// for now:
+			//   separately track why a type was instantiated,
+			//   and the consequences of the instantiation.
+
+			// he have:
+			// marked a virtual
+			// with an override
+			// whose declaring type is marked
+			// that's not already processed: problem!
+			//    we need to be able to re-process an override.
+			//    as an override of a different virtual call target.
+			//    well, I guess it's enough to just report one. don't need to make the graph complete.
+			// and also not already marked
+			//    problem: we will only ever mark an override if it's not already marked!
+			// and not an unneeded interface override
+			// and (for override removal), it's instantiated or abstract
+
 			ProcessVirtualMethod (method);
 		}
 
@@ -557,7 +647,7 @@ namespace Mono.Linker.Steps {
 			}
 
 			if (member == "*") {
-				MarkEntireType (td, new MarkReason { kind = MarkReasonKind.UserDependencyType, source = ca });
+				MarkEntireType (td, new DependencyInfo { kind = DependencyKind.UserDependencyType, source = ca });
 				return;
 			}
 
@@ -707,7 +797,7 @@ namespace Mono.Linker.Steps {
 			return true;
 		}
 
-		protected void MarkStaticConstructor (TypeDefinition type, MarkReason reason)
+		protected void MarkStaticConstructor (TypeDefinition type, DependencyInfo reason)
 		{
 			foreach (var method in type.Methods) {
 				if (IsNonEmptyStaticConstructor (method)) {
@@ -949,7 +1039,7 @@ namespace Mono.Linker.Steps {
 			}
 
 			foreach (TypeDefinition type in assembly.MainModule.Types)
-				MarkEntireType (type, new MarkReason { kind = MarkReasonKind.EntryType });
+				MarkEntireType (type, new DependencyInfo { kind = DependencyKind.EntryAssembly, source = assembly });
 		}
 
 		void ProcessModule (AssemblyDefinition assembly)
@@ -1052,10 +1142,10 @@ namespace Mono.Linker.Steps {
 
 		protected void MarkField (FieldReference field)
 		{
-			MarkField (field, new MarkReason { kind = MarkReasonKind.Untracked });
+			MarkField (field, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
-		protected void MarkField (FieldReference reference, MarkReason reason)
+		protected void MarkField (FieldReference reference, DependencyInfo reason)
 		{
 			if (reference.DeclaringType is GenericInstanceType)
 				MarkType (reference.DeclaringType);
@@ -1077,10 +1167,10 @@ namespace Mono.Linker.Steps {
 
 		void MarkField (FieldDefinition field)
 		{
-			MarkField (field, new MarkReason { kind = MarkReasonKind.Untracked });
+			MarkField (field, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
-		void MarkField (FieldDefinition field, MarkReason reason)
+		void MarkField (FieldDefinition field, DependencyInfo reason)
 		{
 			if (CheckProcessed (field))
 				return;
@@ -1093,7 +1183,24 @@ namespace Mono.Linker.Steps {
 
 			var parent = field.DeclaringType;
 			if (!Annotations.HasPreservedStaticCtor (parent))
-				MarkStaticConstructor (parent, new MarkReason { kind = MarkReasonKind.FieldCctor, source = field });
+				switch (reason.kind) {
+				case DependencyKind.FieldAccess:
+					var methodAccessingField = reason.source;
+					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.TriggersCctorThroughFieldAccess, source = methodAccessingField });
+					break;
+				case DependencyKind.Untracked:
+					// if we are marking the field for an untracked reason,
+					// still mark the cctor to preserve existing behavior.
+					// but don't record an actual method triggering the cctor
+					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.Untracked });
+					break;
+				case DependencyKind.EntryField:
+					// maybe get rid of these? just mark for now without a reason.
+					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.Untracked });
+					break;
+				default:
+					throw new NotImplementedException (reason.kind.ToString());
+				}
 
 			if (Annotations.HasSubstitutedInit (field)) {
 				Annotations.SetPreservedStaticCtor (parent);
@@ -1101,12 +1208,19 @@ namespace Mono.Linker.Steps {
 			}
 
 			switch (reason.kind) {
-			case MarkReasonKind.FieldAccess:
+			case DependencyKind.FieldAccess:
+				// field was accessed from a method.
+				// let's record it for now, but not sure how to report it.
 				Annotations.MarkFieldAccessFromMethod ((MethodDefinition)reason.source, field);
 				break;
-			case MarkReasonKind.Untracked:
+			case DependencyKind.Untracked:
 				Annotations.MarkFieldUntracked (field);
 				break;
+			case DependencyKind.EntryField:
+				Annotations.MarkFieldUntracked (field);
+				break;
+			default:
+				throw new NotImplementedException (reason.kind.ToString());
 			}
 		}
 
@@ -1131,10 +1245,10 @@ namespace Mono.Linker.Steps {
 
 		protected virtual TypeDefinition MarkType (TypeReference reference)
 		{
-			return MarkType (reference, new MarkReason { kind = MarkReasonKind.Untracked });
+			return MarkType (reference, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
-		protected virtual TypeDefinition MarkType (TypeReference reference, MarkReason reason)
+		protected virtual TypeDefinition MarkType (TypeReference reference, DependencyInfo reason)
 		{
 			if (reference == null)
 				return null;
@@ -1158,12 +1272,42 @@ namespace Mono.Linker.Steps {
 			}
 
 			switch (reason.kind) {
-			case MarkReasonKind.DeclaringTypeOfMethod:
-				Annotations.MarkDeclaringTypeOfMethod ((MethodDefinition)reason.source, type);
-				break;
-			case MarkReasonKind.Untracked:
+			case DependencyKind.DeclaringTypeOfCalledMethod:
+			case DependencyKind.Untracked:
 				Annotations.MarkTypeUntracked (type);
 				break;
+			case DependencyKind.EntryType:
+				// we don't report a specific reason for an entry type.
+				// can get here for INitializeAssembly,
+				// or for xml/root types.
+				break;
+			default:
+				throw new NotImplementedException(reason.kind.ToString());
+			}
+
+			if (type.HasMethods) {
+				if (ShouldMarkTypeStaticConstructor (type)) {
+					switch (reason.kind) {
+					case DependencyKind.DeclaringTypeOfCalledMethod:
+						MarkStaticConstructor (type, new DependencyInfo { kind = DependencyKind.TriggersCctorForCalledMethod, source = reason.source });
+						break;
+					case DependencyKind.EntryType:
+						// for entrytype, we don't have a reason the type is kept, beyond the user said so.
+						// maybe EntryType can be an intermediate reason that a method is kept.
+						// we can track an entry kind that is:
+						// xml, resolvefromassemblystep, or entrypoint
+						// then we can optionally add extra tracing to show why the linker kept something
+						// as opposed to just why we thought it was callable at runtime.
+					default:
+						// we also mark a type's cctor if the type is marked for any other reason, even if the cctor may not have been
+						// called at runtime. if parameters or return type mark a type, if called with null it might still not trigger cctor
+						// but for now, we still mark it. just consider it an untracked cctor in that case.
+						// meaning it has an untracked reason for inclusion, possibly in addition to a real reason.
+						// so it's not really untracked, but for a non-understood reason.
+						MarkStaticConstructor (type, new DependencyInfo { kind = DependencyKind.Untracked });
+						break;
+					}
+				}
 			}
 
 			if (CheckProcessed (type))
@@ -1226,8 +1370,6 @@ namespace Mono.Linker.Steps {
 
 			if (type.HasMethods) {
 				MarkMethodsIf (type.Methods, IsVirtualNeededByTypeDueToPreservedScope);
-				if (ShouldMarkTypeStaticConstructor (type))
-					MarkStaticConstructor (type, new MarkReason { kind = MarkReasonKind.TypeCctor, source = type });
 
 				if (_context.IsFeatureExcluded ("deserialization"))
 					MarkMethodsIf (type.Methods, HasOnSerializeAttribute);
@@ -1965,10 +2107,10 @@ namespace Mono.Linker.Steps {
 
 		private MethodDefinition MarkMethod (MethodReference reference)
 		{
-			return MarkMethod (reference, new MarkReason { kind = MarkReasonKind.Untracked });
+			return MarkMethod (reference, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
-		protected virtual MethodDefinition MarkMethod (MethodReference reference, MarkReason reason)
+		protected virtual MethodDefinition MarkMethod (MethodReference reference, DependencyInfo reason)
 		{
 			reference = GetOriginalMethod (reference);
 
@@ -2021,42 +2163,103 @@ namespace Mono.Linker.Steps {
 			return method;
 		}
 
-		protected virtual void ProcessMethod (MethodDefinition method, MarkReason reason)
+		protected virtual void ProcessMethod (MethodDefinition method, DependencyInfo reason)
 		{
 			// note the method call, even if we have already processed it.
+
+			// problem:
+			// some logic (what to mark it for, incoming edge) must be done for every caller.
+			// some must run only once per definition.
+			// we want to "mark" the method body as dangerous only once.
+			// but we call Annotations.Mark on the method every time, currently.
+			// what to do?
+			// we mark for inclusion before.
+			// once it's marked, it's in the graph.
 
 			// TODO: replace this with a reason!
 			// need to mark the method call EVEN if we have already processed the method!
 			switch (reason.kind) {
-			case MarkReasonKind.DirectCall:
+			case DependencyKind.DirectCall:
 				Annotations.MarkMethodCall ((MethodDefinition)reason.source, method);
 				break;
-			case MarkReasonKind.VirtualCall:
+			case DependencyKind.VirtualCall:
 				Annotations.MarkVirtualMethodCall ((MethodDefinition)reason.source, method);
 				break;
-			case MarkReasonKind.FieldCctor:
-				Annotations.MarkStaticConstructorForField ((FieldDefinition)reason.source, method);
+			case DependencyKind.TriggersCctorThroughFieldAccess:
+				Annotations.MarkTriggersStaticConstructorThroughFieldAccess ((MethodDefinition)reason.source, method);
 				break;
-			case MarkReasonKind.TypeCctor:
-				Annotations.MarkTypeStaticConstructor ((TypeDefinition)reason.source, method);
+			case DependencyKind.TriggersCctorForCalledMethod:
+				Annotations.MarkTriggersStaticConstructorForCalledMethod ((MethodDefinition)reason.source, method);
 				break;
-			case MarkReasonKind.Untracked:
+			case DependencyKind.Untracked:
 				Annotations.MarkMethodUntracked (method);
 				break;
+			case DependencyKind.EntryMethod:
+				// don't track an entry reason. if we got here, there is already an entry reason.
+				// just mark the NODE as an entry node, without a particular reason for being an entry node.
+				// don't say UNKNOWN.
+				// just ASSERT that the method already has an entry reason.
+				// and mark it as an entry node in the annotations.
+				//_context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo { kind = EntryKind.Unknown, entry = method });
+				Annotations.MarkEntryMethod (method);
+				break;
+
+			case DependencyKind.OverrideOnInstantiatedType:
+				Annotations.MarkMethodOverrideOnInstantiatedType ((TypeDefinition)reason.source, method);
+				break;
+			case DependencyKind.Override:
+				Annotations.MarkOverride ((MethodDefinition)reason.source, method);
+				break;
+			default:
+				throw new NotSupportedException ("don't yet support the reason kind " + reason.kind);
 			}
 
-			if (CheckProcessed (method))
+			Tracer.Push (method);
+			// marktype
+			switch (reason.kind) {
+			case DependencyKind.DirectCall:
+			case DependencyKind.VirtualCall:
+				MarkType (method.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfCalledMethod, source = method });
+				break;
+			case DependencyKind.TriggersCctorThroughFieldAccess:
+			case DependencyKind.TriggersCctorForCalledMethod:
+			case DependencyKind.Override:
+			case DependencyKind.OverrideOnInstantiatedType: // in this case, the declaring type would already have been marked anyway.
+			case DependencyKind.Untracked:
+				MarkType (method.DeclaringType);
+				break;
+			case DependencyKind.EntryMethod:
+				// TODO
+				MarkType (method.DeclaringType);
+				break;
+			default:
+				throw new NotImplementedException (reason.kind.ToString());
+			}
+
+			if (CheckProcessed (method)) {
+				Tracer.Pop ();
 				return;
+			}
+
 
 			Tracer.Push (method);
-			MarkType (method.DeclaringType, new MarkReason { kind = MarkReasonKind.DeclaringTypeOfMethod, source = method });
+
+			// problem: if type is first marked for some other reason...
+			// then we might not get here because of the CheckProcessed check.
+
 			MarkCustomAttributes (method);
 			MarkSecurityDeclarations (method);
 
 			MarkGenericParameterProvider (method);
 
-			if (ShouldMarkAsInstancePossible (method))
-				MarkRequirementsForInstantiatedTypes (method.DeclaringType);
+			if (ShouldMarkAsInstancePossible (method)) {
+				if (method.IsInstanceConstructor ()) {
+					MarkRequirementsForInstantiatedTypes (method.DeclaringType, new DependencyInfo { kind = DependencyKind.ConstructedType, source = method });
+				} else if (method.DeclaringType.IsInterface) {
+					// no reason
+					MarkRequirementsForInstantiatedTypes (method.DeclaringType);
+				}
+			}
 
 			if (method.IsConstructor) {
 				if (!Annotations.ProcessSatelliteAssemblies && KnownMembers.IsSatelliteAssemblyMarker (method))
@@ -2129,15 +2332,48 @@ namespace Mono.Linker.Steps {
 
 		protected virtual void MarkRequirementsForInstantiatedTypes (TypeDefinition type)
 		{
+			MarkRequirementsForInstantiatedTypes (type, new DependencyInfo { kind = DependencyKind.Untracked });
+		}
+
+		protected virtual void MarkRequirementsForInstantiatedTypes (TypeDefinition type, DependencyInfo reason)
+		{
 			if (Annotations.IsInstantiated (type))
 				return;
 
-			Annotations.MarkInstantiated (type);
+			// switch (reason) {
+			// case DependencyKind.NewObj:
+			// 	Annotations.MarkInstantiatedByCalledConstructor ((MethodDefinition)reason.source, type);
+			// 	break;
+			// case DependencyKind.Untracked:
+			// 	Annotations.MarkInstantiatedUntracked (type);
+			// 	break;
+			// default:
+			// 	throw new NotImplementedException (reason.kind);
+			// }
+			// actually, don't track whether a type is instantiated in the graph.
+			// just track method -> method dependency from the ctor to the method.
+//			Annotations.MarkInstantiated (type);
+			switch (reason.kind) {
+			case DependencyKind.ConstructedType:
+				Annotations.MarkInstantiatedByConstructor ((MethodDefinition)reason.source, type);
+				break;
+			case DependencyKind.Untracked:
+				Annotations.MarkInstantiatedUntracked (type);
+				break;
+			default:
+				throw new NotImplementedException (reason.kind.ToString ());
+			}
 
 			MarkInterfaceImplementations (type);
 
-			foreach (var method in GetRequiredMethodsForInstantiatedType (type))
-				MarkMethod (method);
+			foreach (var method in GetRequiredMethodsForInstantiatedType (type)) {
+//				switch (reason.kind) {
+//				case DependencyKind.TypeInstantiatedByCallToConstructor:
+					// this will only mark those weird preservescope methods.
+					// not overrides.
+//					MarkMethod (method, new DependencyInfo { kind = MethodRequiredForConstructedType });
+					MarkMethod (method);
+			}
 
 			DoAdditionalInstantiatedTypeProcessing (type);
 		}
@@ -2391,21 +2627,21 @@ namespace Mono.Linker.Steps {
 		{
 			switch (instruction.OpCode.OperandType) {
 			case OperandType.InlineField:
-				MarkField ((FieldReference) instruction.Operand, new MarkReason { kind = MarkReasonKind.FieldAccess, source = method });
+				MarkField ((FieldReference) instruction.Operand, new DependencyInfo { kind = DependencyKind.FieldAccess, source = method });
 				break;
 			case OperandType.InlineMethod:
-				MarkReason reason;
+				DependencyInfo reason;
 				switch (instruction.OpCode.Code) {
 				case Code.Jmp:
 				case Code.Call:
 				case Code.Newobj:
-					reason = new MarkReason { kind = MarkReasonKind.DirectCall, source = method };
+					reason = new DependencyInfo { kind = DependencyKind.DirectCall, source = method };
 					break;
 				case Code.Callvirt:
-					reason = new MarkReason { kind = MarkReasonKind.VirtualCall, source = method };
+					reason = new DependencyInfo { kind = DependencyKind.VirtualCall, source = method };
 					break;
 				default:
-					reason = new MarkReason { kind = MarkReasonKind.Untracked, source = null };
+					reason = new DependencyInfo { kind = DependencyKind.Untracked, source = null };
 					break;
 				}
 				MarkMethod ((MethodReference) instruction.Operand, reason);
@@ -2585,6 +2821,17 @@ namespace Mono.Linker.Steps {
 				try {
 					mark ();
 					_context.ReflectionPatternRecorder.RecognizedReflectionAccessPattern (MethodCalling, MethodCalled, accessedItem);
+					Console.Error.WriteLine("reflection: over " + accessedItem.ToString() + " (type: " + accessedItem.GetType().ToString() + ")");
+					// if (accessedItem is MethodDefinition methodAccessed) {
+					// 	// its existence is enough for the access.
+					// 	// if there's an Invoke, then it also needs to be safe.
+					// 	// for now, assume that any accessed method WILL BE INVOKED.
+					// 	// and track it as such FROM THE SAME CALLSITE THAT ACCESSED IT!
+					// 	_context.Annotations.MarkAnalyzedReflectionAccess (MethodCalling, methodAccessed);
+					// }
+					// if it's a type, then it's enough for a type to exist.
+					// if there's a GetMethod on unknown type, then either it needs to have all members kept
+					// or the matching method kept. or just report an error.
 				} finally {
 					_context.Tracer.Pop ();
 				}
@@ -2605,9 +2852,51 @@ namespace Mono.Linker.Steps {
 				// this marks the target as dangerous so it will show up
 				// TODO: eventually, all the APIs that we even attempt to analyze will already be considered dangerous,
 				// and we can get rid of this line.
-				_context.Annotations.MarkDangerousMethod (MethodCalled);
+
+				// _context.Annotations.MarkDangerousMethod (MethodCalled);
+				// calling method should be marked dangerous, as it contains the dangerous callsite.
+
+				// TODO: fix this bug.
+				// marking it as dangerous is too late, because it has already been inserted into the graph.
+				//_context.Annotations.MarkDangerousMethod (MethodCalling);
 				// this sets up an edge to the dangerous reflection method.
-				_context.Annotations.MarkUnanalyzedReflectionCall (MethodCalling, MethodCalled);
+
+				// marking ANYTHING as dangerous only shows up in the call graph
+				// if it's marked dangerous BEFORE anything else references it.
+				// otherwise the "dangerous" bit is not set.
+				// and there's no way to set it in a collection.
+				// options:
+				// 1. only insert into the graph when we know.
+				//    - if methods can be "dangerous", we must only insert them into the graph
+				//      after we know whether they are dangerous.
+				//      - if base APIs are "dangerous", only insert into graph after checking if it's a reflection API
+				//      - if callsites are "dangerous", only insert a method into graph after processing its body
+				//    - don't build graph until we know all of the properties.
+				//      prevents building the graph incrementally
+				// 2. allow mutating the graph in restricted ways as we go
+				//    - 
+				// _context.Annotations.MarkDangerousMethod (MethodCalling);
+				// reflection data!
+				// pass the dangerous data into this.
+				// 
+
+				// solution:
+				// consider the "data" to be the union of all datas that reach this method.
+				// where data INCLUDES a call chain suffix of length 1 (one callsite)
+				// that means, that we track separately the possible data that can reach a dangerous method
+				// for each direct callsite.
+				// DATA = (callsite, possible values)
+				// pass this data along to the analysis.
+				// if any one is a dangerous value, ERROR about the GetType call for that callsite.
+				// one unique error per dangerous datum.
+				// it's a lattice of sets containing elements like (callsite, ppossible values)
+				// not sure how the lattice factors over callsites and values
+				// this says a dangerous data reached this callsite.
+				// TODO: enhance unknown kind. for now, tracking everything as unknown.
+				// eventually, should flow nicer errors to this.
+				var reflectionData = new ReflectionData { kind = ReflectionDataKind.Unknown };
+
+				_context.Annotations.MarkUnanalyzedReflectionCall (MethodCalling, MethodCalled, InstructionIndex, reflectionData);
 			}
 
 			public void Dispose ()

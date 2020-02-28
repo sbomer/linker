@@ -9,7 +9,7 @@ namespace Mono.Linker.Steps
 		{
 			string jsonFile = Path.Combine (Context.OutputDirectory, "trimanalysis.json");
 			using FileStream fs = File.Create (jsonFile);
-			var writer = new JsonPathWriter(Context.Annotations.Graph, fs, Context);
+			var writer = new JsonPathWriter(Context.Annotations.Recorder, Context.Annotations.Graph, Context.Annotations.UnsafeReachingData, fs, Context);
 			writer.Write ();
 		}
 	}

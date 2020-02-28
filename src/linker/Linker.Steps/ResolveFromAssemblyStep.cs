@@ -151,7 +151,7 @@ namespace Mono.Linker.Steps
 				return;
 			}
 
-			context.Annotations.MarkEntryType (type);
+			context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.RootAssembly, source = type.Module.Assembly, entry = type });;
 			context.Annotations.Push (type);
 
 			if (type.HasFields)
@@ -173,7 +173,14 @@ namespace Mono.Linker.Steps
 
 			MethodDefinition entryPoint = assembly.EntryPoint;
 			// the "reason" we mark this type is because it's the declaring type of the entry method.
-			Context.Annotations.MarkDeclaringTypeOfMethod (entryPoint, entryPoint.DeclaringType);
+			// this could lead to execution of the type's cctor which might be dangerous.
+			// the "reason" this was marked needs to be propagated to MarkStep.
+			// this is a bug.
+			// dangerous code in the cctor of Program will not get surfaced for the right reason.
+			// Context.Annotations.MarkDeclaringTypeOfMethod (entryPoint, entryPoint.DeclaringType);
+			// don't trace a "reason" for declaring type of the entry point.
+			// it will get a reason as the declaring type of a called method.
+			// Context.Annotations.Mark (entryPoint.DeclaringType);
 
 			Context.Annotations.MarkUserAssembly (assembly);
 
@@ -192,7 +199,7 @@ namespace Mono.Linker.Steps
 					_ => true
 				};
 				if (markField) {
-					context.Annotations.MarkEntryField (field);
+					context.MarkingHelpers.MarkEntryField (field, new EntryInfo { kind = EntryKind.RootAssembly, source = field.DeclaringType.Module.Assembly, entry = field });
 				}
 			}
 		}
@@ -212,7 +219,7 @@ namespace Mono.Linker.Steps
 			};
 
 			if (markMethod) {
-				context.Annotations.MarkEntryMethod (method);
+				context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo { kind = EntryKind.RootAssembly, source = method.Module.Assembly, entry = method });
 				context.Annotations.SetAction (method, action);
 			}
 		}

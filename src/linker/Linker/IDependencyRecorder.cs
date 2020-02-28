@@ -43,35 +43,48 @@ namespace Mono.Linker
 		void RecordDependency (object source, object target, bool marked);
 	}
 
+
+	// public interface ISimpleRuleDependencyRecorder
+	// {
+	// 	void RecordDependency (MarkReasonKind kind, object source, object target) {
+	// 		switch (kind) {
+	// 		case MarkReasonKind.EntryType:
+// 
+	// 		}
+	// 	}
+	// }
+
 	public interface IRuleDependencyRecorder
 	{
 		void RecordDirectCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee);
-		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod);
-		void RecordAnalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod);
+		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data);
+		void RecordAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target);
 
 		void RecordDangerousMethod (MethodDefinition method);
 
-		void RecordEntryType (TypeDefinition type);
-		void RecordEntryField (FieldDefinition field);
-		void RecordEntryMethod (MethodDefinition method);
+		void RecordEntryType (TypeDefinition type, EntryInfo info);
+		void RecordEntryField (FieldDefinition field, EntryInfo info);
+		void RecordEntryMethod (MethodDefinition method, EntryInfo info);
 
+
+		void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type);
+		void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method);
 
 		void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType);
 
 		void RecordUserDependencyType (CustomAttribute customAttribute, TypeDefinition type);
 
-		void RecordTypeStaticConstructor (TypeDefinition type, MethodDefinition cctor);
 		void RecordFieldAccessFromMethod (MethodDefinition method, FieldDefinition field);
-		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
+//		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
+		void RecordTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor);
+		void RecordTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor);
 		void RecordDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type);
 		void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent);
-
+		void RecordOverride (MethodDefinition @base, MethodDefinition @override);
 
 		void RecordFieldUntracked (FieldDefinition field);
 		void RecordTypeUntracked (TypeDefinition type);
 		void RecordMethodUntracked (MethodDefinition method);
-
-
 	}
 }

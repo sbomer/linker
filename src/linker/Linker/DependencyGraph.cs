@@ -65,7 +65,7 @@ namespace Mono.Linker
 		public readonly HashSet<Node<NodeInfo>> nodes;
 		readonly HashSet<Edge<NodeInfo, EdgeInfo>> edges;
 		public readonly Dictionary<Node<NodeInfo>, HashSet<Edge<NodeInfo, EdgeInfo>>> edgesFrom;
-		readonly Dictionary<Node<NodeInfo>, HashSet<Edge<NodeInfo, EdgeInfo>>> edgesTo;
+		public readonly Dictionary<Node<NodeInfo>, HashSet<Edge<NodeInfo, EdgeInfo>>> edgesTo;
 
 		public DependencyGraph() {
 			nodes = new HashSet<Node<NodeInfo>> ();
@@ -118,7 +118,6 @@ namespace Mono.Linker
 		public void AddNode(Node<NodeInfo> n) {
 			nodes.Add (n);
 		}
-
 	}
 
 	// this class does know about the node attribute type (maybe even the edge kind)
@@ -143,17 +142,120 @@ namespace Mono.Linker
 		public Dictionary<Node<NodeInfo>, HashSet<List<Edge<NodeInfo, EdgeInfo>>>> GetAllShortestPaths() {
 			var pathsFrom = new Dictionary<Node<NodeInfo>, HashSet<List<Edge<NodeInfo, EdgeInfo>>>> ();
 			foreach (var start in nodes.Where(n => n.IsStart())) {
-				var paths = GetShortestPaths (start);
-				if (paths.Count > 0)
-					pathsFrom [start] = GetShortestPaths (start);
+				var paths = GetShortestPathsFrom (start);
+				if (paths.Count > 0) {
+					throw new Exception("we shouldn't have multiple path sets for a starting point...");
+					if (start.Value.ToString() == "T System.Activator::CreateInstance()") {
+						Console.WriteLine ("inserting paths for createinstance!");
+					}
+					pathsFrom [start] = GetShortestPathsFrom (start);
+				}
 			}
 			return pathsFrom;
+		}
+
+		// this finds a shortest path from each IsStart() node to the specified node.
+		// this may be called on nodes that aren't end (dangerous) nodes.
+		// in fact, we're no longer tracking nodes as dangerous on their own.
+		// but they might be dangerous within some context.
+		// we need to find all potentially dangerous contexts (callsites)
+		// and find all paths from starts to those.
+		// that don't themselves go through a dangerous edge, except to end in it.
+		// since our context has length of one, we can just treat it as an edge.
+		// might require a different algorithm in general.
+		// don't want to go through any other dangerous edges.
+		// if an edge is part of some dangerous data,
+		// that edge still might participate in another dangerous
+		// path to a different dangerous edge.
+		// we don't want to discount such paths.
+		// we do want to discount paths through other start nodes.
+		// this will have the effct of only showing the most immediate start node to reach a dangerous edge.
+		public HashSet<List<Edge<NodeInfo, EdgeInfo>>> GetShortestPathsTo (Node<NodeInfo> end) {
+			var starts = new HashSet<Node<NodeInfo>> ();
+			// end is NOT necessarily an IsEnd node.
+
+			// find shortest path from start to endEdge.
+			// may possibly go through another end edge.
+			// but not through another start - only report immediate start nodes.
+
+			// the shortest path ending with a suffix is the shortest path to the start of the suffix,
+			// plus the suffix.
+			// UNLESS the shortest path to start of suffix itself includes the path we care about?
+			// no, that's not possible.
+			// what if it goes to target of the suffix?
+			// doesn't matter. just get shortest path to the node.
+
+			// allow going through other public APIs?
+			// allow going through other dangerous callsites?
+			// really, need to do the search as a whole, after knowing all of the constraints.
+			// but for now, just ignore those constraints and see what comes out.
+
+			// just report shortest path from each start to this end, without going through other starts.
+			// but may go through ends.
+
+			var forwardEdge = new Dictionary<Node<NodeInfo>, Edge<NodeInfo, EdgeInfo>> ();
+			var discovered = new HashSet<Node<NodeInfo>> { end };
+
+			if (end.IsStart ()) {
+				starts.Add (end);
+				goto Return;
+			}
+
+			var queue = new Queue<Node<NodeInfo>> ();
+			queue.Enqueue (end);
+			while (!(queue.Count == 0)) {
+				var u = queue.Dequeue ();
+
+				if (!edgesTo.TryGetValue (u, out HashSet<Edge<NodeInfo, EdgeInfo>> toEdges))
+					continue;
+
+				foreach (var edge in toEdges) {
+					var v = edge.From;
+
+					if (!discovered.Add (v))
+						continue;
+
+					if (v.IsEnd ()) {
+						// for symmetry, this ignores end nodes, and should continue.
+						// however, right now I expect we never mark end nodes.
+						throw new Exception ("unexpected end node!");
+					}
+
+					forwardEdge [v] = edge;
+
+					if (v.IsStart ()) {
+						starts.Add (v);
+						// don't consider paths that go through another start node.
+						// only report immediate start nodes.
+						continue;
+					}
+
+					queue.Enqueue (v);
+				}
+			}
+
+		Return:
+			var paths = new HashSet<List<Edge<NodeInfo, EdgeInfo>>> ();
+			foreach (var start in starts) {
+				var path = new List<Edge<NodeInfo, EdgeInfo>> ();
+				var node = start;
+				while (forwardEdge.TryGetValue (node, out Edge<NodeInfo, EdgeInfo> edge)) {
+					path.Add (edge);
+					node = edge.To;
+				}
+
+				path.Reverse ();
+
+				paths.Add (path);
+			}
+
+			return paths;
 		}
 
 		// never returns null
 		// empty set means no paths were found
 		// set containing empty list means it's the path from the node to itself
-		private HashSet<List<Edge<NodeInfo, EdgeInfo>>> GetShortestPaths(Node<NodeInfo> start) {
+		private HashSet<List<Edge<NodeInfo, EdgeInfo>>> GetShortestPathsFrom(Node<NodeInfo> start) {
 			System.Diagnostics.Debug.Assert(start.IsStart ());
 
 			var ends = new HashSet<Node<NodeInfo>> ();

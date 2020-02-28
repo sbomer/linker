@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using System.Linq;
 
 namespace Mono.Linker {
 
@@ -63,7 +64,10 @@ namespace Mono.Linker {
 
 		private readonly IRuleDependencyRecorder rule_dependency_recorder = new GraphDependencyRecorder ();
 
-		public SearchableDependencyGraph<NodeInfo, EdgeInfo> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
+		public SearchableDependencyGraph<NodeInfo, DependencyInfo> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
+		public HashSet<UnsafeReachingData> UnsafeReachingData => ((GraphDependencyRecorder)rule_dependency_recorder).unsafeReachingData;
+
+		public GraphDependencyRecorder Recorder=> ((GraphDependencyRecorder)rule_dependency_recorder);
 
 		public AnnotationStore (LinkContext context) => this.context = context;
 
@@ -155,16 +159,13 @@ namespace Mono.Linker {
 
 		public void Mark (IMetadataTokenProvider provider)
 		{
-			Mark (provider, new MarkReason { kind = MarkReasonKind.Untracked });
+			Mark (provider, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
-		public void Mark (IMetadataTokenProvider provider, MarkReason reason)
+		public void Mark (IMetadataTokenProvider provider, DependencyInfo reason)
 		{
 			marked.Add (provider);
 			Tracer.AddDependency (provider, true);
-			switch (reason) {
-				// ...
-			}
 			// call into dependency recorder...
 		}
 
@@ -212,7 +213,7 @@ namespace Mono.Linker {
 			return indirectly_called.Contains (method);
 		}
 
-		public void MarkInstantiated (TypeDefinition type)
+		public void MarkInstantiatedUntracked (TypeDefinition type)
 		{
 			marked_instantiated.Add (type);
 		}
@@ -464,6 +465,8 @@ namespace Mono.Linker {
 			return null;
 		}
 
+		// TODO: move these helpers into MarkingHelpers.
+
 		// every call to Annotations.Mark should ultimately go through one of these helpers,
 		// each of which tracks a "reason" that the item was marked.
 
@@ -474,7 +477,6 @@ namespace Mono.Linker {
 		// doing all the process logic is the problem.
 		public void MarkMethodCall (MethodDefinition caller, MethodDefinition callee)
 		{
-			System.Console.WriteLine (caller + " ---> " + callee);
 			rule_dependency_recorder.RecordDirectCall (caller, callee);
 			Mark (callee);
 		}
@@ -482,46 +484,46 @@ namespace Mono.Linker {
 		public void MarkVirtualMethodCall (MethodDefinition caller, MethodDefinition callee)
 		{
 			rule_dependency_recorder.RecordVirtualCall (caller, callee);
-			System.Console.WriteLine (caller + " -|-> " + callee);
 			Mark (callee);
 			// TODO: see if there are multiple edges between same nodes.
 			// there shouldn't be... maybe?
 		}
 
-		public void MarkUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod)
+		public void MarkAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target)
 		{
-			rule_dependency_recorder.RecordUnanalyzedReflectionCall (source, reflectionMethod);
+			rule_dependency_recorder.RecordAnalyzedReflectionAccess (source, target);
 		}
 
-		public void MarkFieldOfType (TypeDefinition source, FieldDefinition field)
+
+		// think of this as:
+		// we report data reaching this API, along with a context.
+		// the data is a call string suffix of length one, plus a value.
+		// <callsite, value>
+		// the value lattice has:
+		// known string that resolves to a member < known string that doesn't resolve < unknown string
+		// if dataflow analysis results in anything but a "known resolvable string" reaching certain APIs,
+		// we report errors. so these dataflow results must be recorded for the reporting infrastructure.
+		// ideally, also with a value!
+		// later, maybe add an instruction index.
+		public void MarkUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data)
 		{
-			// ?
+			// DATA is really: call context + data.
+			// (source method -> reflection method), data
+			// context is in general a list of callsites.
+			// for now, just one callsite.
+			rule_dependency_recorder.RecordUnanalyzedReflectionCall (source, reflectionMethod, instructionIndex, data);
 		}
 
-		public void MarkDangerousMethod (MethodDefinition method)
-		{
-			// TODO: get rid of this. it shouldn't be called "mark*"
-			// mutate the reason.
-//			graph.AddNode (GetOrCreateNodeSettingAttributes (method, new NodeInfo { Dangerous = true }));
-			rule_dependency_recorder.RecordDangerousMethod (method);
-		}
-
-		public void MarkEntryType (TypeDefinition type)
-		{
-			context.Annotations.Mark (type);
-			rule_dependency_recorder.RecordEntryType (type);
-		}
+		// should we enforce that a method body is only ever reported once?
+		// I think so...
+		// but right now, we record it as dangerous at the callsite.
+		// this is a hack. it should be reported dangerous exactly once,
+		// when we scan the definition.
 
 		public void MarkNestedType (TypeDefinition declaringType, TypeDefinition nestedType)
 		{
 			context.Annotations.Mark (nestedType);
 			rule_dependency_recorder.RecordNestedType (declaringType, nestedType);
-		}
-
-		public void MarkEntryField (FieldDefinition field)
-		{
-			context.Annotations.Mark (field);
-			rule_dependency_recorder.RecordEntryField (field);
 		}
 
 		public void MarkUserDependencyType (CustomAttribute ca, TypeDefinition type)
@@ -530,24 +532,64 @@ namespace Mono.Linker {
 			rule_dependency_recorder.RecordUserDependencyType (ca, type);
 		}
 
-		public void MarkEntryMethod (MethodDefinition method)
+		public void MarkTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor)
+		{
+			context.Annotations.Mark (cctor);
+			rule_dependency_recorder.RecordTriggersStaticConstructorThroughFieldAccess (method, cctor);
+		}
+
+		public void MarkTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor)
+		{
+			context.Annotations.Mark (cctor);
+			rule_dependency_recorder.RecordTriggersStaticConstructorForCalledMethod (method, cctor);
+		}
+
+		public void MarkInstantiatedByConstructor (MethodDefinition cctor, TypeDefinition type)
+		{
+			marked_instantiated.Add (type);
+			System.Diagnostics.Debug.Assert (cctor.DeclaringType == type);
+			rule_dependency_recorder.RecordInstantiatedByConstructor (cctor, type); // calls ctor?
+			// really, need an edge from instantiated type -> all methods
+			// so, track:
+			// 1. instantiated type
+			// 2. kept method for the instantiation
+			// if we keep it just for the type, and also because it's an override... that's fine.
+			// just need to report one.
+			// would like to see:
+
+
+			// dangerous virtual method
+			// kept for type instantiated by: cctor
+
+			// method:          T.M
+			// on type:         T
+			// instantiated by: T::.ctor
+			// called from:     A.N
+
+			// virtual method:            T.M
+			// on type instantiated from: A.N
+
+			// method:                        T.M
+			// kept for instantiated type:     T
+			// instantiated from: A.N
+
+			// method:                  T.M
+			// on type instantiated by: T::.ctor
+			// called from:             A.N
+
+
+		}
+
+		public void MarkMethodOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method)
 		{
 			context.Annotations.Mark (method);
-			rule_dependency_recorder.RecordEntryMethod (method);
+			rule_dependency_recorder.RecordOverrideOnInstantiatedType (type, method);
 		}
 
-		// non-beforefieldinit or disabled beforefieldinit optimization -> mark type's static ctor for marked type
-		public void MarkTypeStaticConstructor (TypeDefinition type, MethodDefinition cctor)
+		public void MarkOverride (MethodDefinition @base, MethodDefinition @override)
 		{
-			context.Annotations.Mark (cctor);
-			rule_dependency_recorder.RecordTypeStaticConstructor (type, cctor);
-		}
-
-		// field access -> mark non-empty static ctor (beforefieldinit or not!)
-		public void MarkStaticConstructorForField (FieldDefinition field, MethodDefinition cctor)
-		{
-			context.Annotations.Mark (cctor);
-			rule_dependency_recorder.RecordStaticConstructorForField (field, cctor);
+			context.Annotations.Mark (@override);
+			rule_dependency_recorder.RecordOverride (@base, @override);
 		}
 
 		public void MarkFieldAccessFromMethod (MethodDefinition method, FieldDefinition field)
@@ -575,6 +617,18 @@ namespace Mono.Linker {
 		{
 			context.Annotations.Mark (method);
 			rule_dependency_recorder.RecordMethodUntracked (method);
+		}
+
+		public void MarkEntryMethod (MethodDefinition method)
+		{
+			// should already be marked!
+			// assert that: it already has an entry reason
+			// it's already marked.
+			System.Diagnostics.Debug.Assert (marked.Contains (method));
+			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.entry == method));
+			context.Annotations.Mark (method);
+			// it should already be in the graph as an entry method.
+			// assert that it's already been reported to the recorder?
 		}
 
 		public void MarkDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type)

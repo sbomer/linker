@@ -663,11 +663,11 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 				foreach (var attr in typeInAssembly.CustomAttributes) {
 					// TODO: check other reasons!
 					if (attr.AttributeType.Resolve ().Name == nameof (KeptMethodReasonAttribute)) {
-						var reasonKind = (MarkReasonKind)attr.ConstructorArguments [0].Value;
+						var reasonKind = (DependencyKind)attr.ConstructorArguments [0].Value;
 						// problem: there will be a MarkReasonKind for different assemblies.
 						// probably need to add a ref to the linker project.
 						switch (reasonKind) {
-						case MarkReasonKind.VirtualCall:
+						case DependencyKind.VirtualCall:
 							var expectedSourceType = (Type)attr.ConstructorArguments [0].Value;
 							var expectedSourceMethod = (string)attr.ConstructorArguments [1].Value;
 							break;
