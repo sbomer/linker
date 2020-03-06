@@ -218,9 +218,7 @@ namespace Mono.Linker.Steps {
 				Annotations.MarkUserDependencyType ((CustomAttribute)reason.source, type);
 				break;
 			case DependencyKind.Untracked:
-				//Annotations.MarkTypeUntracked (type);
 				throw new Exception("untracked!");
-				break;
 			default:
 				throw new NotImplementedException ("don't support kind " + reason.kind);
 			}
@@ -1148,7 +1146,9 @@ namespace Mono.Linker.Steps {
 					MarkType (reference.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfField, source = field });
 				} else {
 					throw new Exception("what to do here?");
-					MarkType (reference.DeclaringType); // no reason, hopefully uncommon.
+					// used to MarkType (reference.DeclaringType)...
+					// if the field ref is a generic type, 
+					//MarkType (reference.DeclaringType); // no reason, hopefully uncommon.
 				}
 				// BUT: problem is this field itself won't actually get marked.
 				// only its resolved one will.

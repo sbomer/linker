@@ -145,10 +145,6 @@ namespace Mono.Linker
 				var paths = GetShortestPathsFrom (start);
 				if (paths.Count > 0) {
 					throw new Exception("we shouldn't have multiple path sets for a starting point...");
-					if (start.Value.ToString() == "T System.Activator::CreateInstance()") {
-						Console.WriteLine ("inserting paths for createinstance!");
-					}
-					pathsFrom [start] = GetShortestPathsFrom (start);
 				}
 			}
 			return pathsFrom;
