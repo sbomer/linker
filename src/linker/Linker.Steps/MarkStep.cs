@@ -1662,7 +1662,9 @@ namespace Mono.Linker.Steps {
 					} else {
 						FieldDefinition field = GetField (type, realMatch);
 						if (field != null) {
-							MarkField (field, new DependencyInfo { kind = DependencyKind.FieldReferencedByAttribute, source = attribute });
+							// MarkField (field, new DependencyInfo { kind = DependencyKind.FieldReferencedByAttribute, source = attribute });
+							// we keep DDA fields without necessarily keeping the attribute. mark it as an entry.
+							_context.MarkingHelpers.MarkEntryField (field, new EntryInfo { kind = EntryKind.UnmarkedAttributeDependency, source = attribute, entry = field });
 							continue;
 						}
 

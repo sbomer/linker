@@ -12,6 +12,8 @@ namespace Mono.Linker {
 			// pretty aggressively, but may not keep the assembly anyway.
 		//ModuleCustomAttribute, // similar.  it marks ca's in modules up-front.
 			// and we don't know at that point if the module will be kept.
+		UnmarkedAttributeDependency, // DebuggerDisplayAttribute targets may be kept without the attribute being kept.
+		// mark the target as an entry.
 	}
 	public struct EntryInfo {
 		public EntryKind kind;
