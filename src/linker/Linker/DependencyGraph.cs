@@ -97,8 +97,8 @@ namespace Mono.Linker
 		// }
 
 		public void AddEdge (Edge<NodeInfo, EdgeInfo> e) {
-			nodes.Add (e.From);
-			nodes.Add (e.To);
+			AddNode (e.From);
+			AddNode (e.To);
 			if (!edges.Add (e)) {
 				return;
 			}
@@ -170,7 +170,11 @@ namespace Mono.Linker
 		// we don't want to discount such paths.
 		// we do want to discount paths through other start nodes.
 		// this will have the effct of only showing the most immediate start node to reach a dangerous edge.
-		public HashSet<List<Edge<NodeInfo, EdgeInfo>>> GetShortestPathsTo (Node<NodeInfo> end) {
+		public List<Edge<NodeInfo, EdgeInfo>> GetShortestPathTo (Node<NodeInfo> end) {
+			return GetShortestPathsTo (end, returnMultiple: false).Single();
+		}
+
+		public HashSet<List<Edge<NodeInfo, EdgeInfo>>> GetShortestPathsTo (Node<NodeInfo> end, bool returnMultiple = true) {
 			var starts = new HashSet<Node<NodeInfo>> ();
 			// end is NOT necessarily an IsEnd node.
 
@@ -225,6 +229,8 @@ namespace Mono.Linker
 
 					if (v.IsStart ()) {
 						starts.Add (v);
+						if (!returnMultiple)
+							goto Return;
 						// don't consider paths that go through another start node.
 						// only report immediate start nodes.
 						continue;

@@ -43,6 +43,19 @@ namespace Mono.Linker
 			this.stream = stream;
 			this.context = context;
 			this.recorder = dependencyRecorder;
+			CheckThatEveryNodeHasAReason();
+		}
+
+		private void CheckThatEveryNodeHasAReason()
+		{
+			foreach (var node in graph.nodes) {
+				if (graph.edgesTo.ContainsKey (node))
+					continue;
+				if (recorder.entryInfo.Any(ei => ei.entry == node.Value))
+					continue;
+				// this node doesn't have a REASON to be in the graph!!!
+				throw new Exception("unaccounted-for node " + node.Value.ToString() + " has no reason!");
+			}
 		}
 
 		// TODO: abstract this to not depend on node type.
@@ -86,28 +99,34 @@ namespace Mono.Linker
 			foreach (var edge in edges) {
 				from = edge.From;
 				System.Diagnostics.Debug.Assert (from.Value is MethodDefinition || from.Value is FieldDefinition || from.Value is TypeDefinition);
-				switch (edge.Info.kind) {
-				case DependencyKind.DirectCall:
-					prefixes.Add ($"called from: ");
+				var prefixString = edge.Info.kind switch {
+					DependencyKind.DirectCall => "called from",
+					DependencyKind.VirtualCall => "maybe called virtually from",
+					DependencyKind.UnanalyzedReflectionCall => "not understood in call from",
+					DependencyKind.TriggersCctorThroughFieldAccess => "maybe triggered by field access from",
+					DependencyKind.TriggersCctorForCalledMethod => "maybe triggered by method call to",
+					DependencyKind.Override => "override of",
+					DependencyKind.OverrideOnInstantiatedType => "of instantiated type",
+					DependencyKind.MethodAccessedViaReflection => "reflected over by",
+					_ => $"{edge.Info.kind}",
+				};
+				prefixString += ": ";
+				switch (edge.Info.genericKind) {
+				case GenericDependencyKind.GenericArgument:
+					prefixString = "generic argument of " + prefixString;
 					break;
-				case DependencyKind.VirtualCall:
-					prefixes.Add ($"maybe called virtually from: ");
+				case GenericDependencyKind.CustomAttribute:
+					prefixString = "custom attribute of " + prefixString;
 					break;
-				case DependencyKind.UnanalyzedReflectionCall:
-					prefixes.Add ($"not understood in call from: ");
+				case GenericDependencyKind.None:
 					break;
-				case DependencyKind.TriggersCctorThroughFieldAccess:
-					prefixes.Add ($"maybe triggered by field access from: ");
+				case GenericDependencyKind.ModifierType:
+					prefixString = "modifier type of " + prefixString;
 					break;
-				case DependencyKind.TriggersCctorForCalledMethod:
-					prefixes.Add ($"maybe triggered by method call to: ");
-					break;
-				case DependencyKind.Override:
-					prefixes.Add ($"override of: ");
-					break;
-				case DependencyKind.OverrideOnInstantiatedType:
-					prefixes.Add ($"of instantiated type: ");
-					break;
+				default:
+					throw new Exception("not implemented");
+				}
+				prefixes.Add (prefixString);
 
 				// not a real mark reason, but only found at end.
 				// case DependencyKind.ContainsDangerousCallsite:
@@ -119,9 +138,7 @@ namespace Mono.Linker
 //				case MarkReasonKind.DeclaringTypeOfMethod:
 //					prefixes.Add ($"declaring type of: ");
 //					break;
-				default:
-					throw new System.NotImplementedException ("tracing " + edge.Info.kind.ToString () + " dependencies is not supported");
-				}
+//					throw new System.NotImplementedException ("tracing " + edge.Info.kind.ToString () + " dependencies is not supported");
 			}
 
 //			var outerNode = from;
@@ -145,14 +162,15 @@ namespace Mono.Linker
 				var entryInfos = recorder.entryInfo.Where (ei => ei.entry == outerNodeNode.Value);
 				if (entryInfos.Count() == 0) {
 					Console.Error.WriteLine ("no entry info found for entry node " + outerNodeNode.Value.ToString());
+					throw new Exception("wat");
 				}
 
 				entryInfo = entryInfos.Single ();
 
 				// found one that's not unknown!
 				switch (entryInfo.kind) {
-				case EntryKind.EmbeddedXml:
-					prefixes.Add ("kept from embedded xml in: ");
+				case EntryKind.XmlDescriptor:
+					prefixes.Add ("kept from xml descriptor: ");
 					break;
 				case EntryKind.RootAssembly:
 					prefixes.Add ("kept for root assembly: ");
@@ -163,6 +181,10 @@ namespace Mono.Linker
 				default:
 					throw new Exception("can't get here");
 				}
+			}
+
+			if (entryInfo.source == null && outerNodeNode.Entry) {
+				throw new Exception("why is source null!??");
 			}
 
 			var prefixLength = prefixes.Select(p => p.Length).Max();
@@ -294,7 +316,7 @@ namespace Mono.Linker
 			if (recorder == null)
 				throw new Exception ("null recorder");
 			var paths = unsafeReachingData.ToDictionary (rd => rd, rd => {
-				var shortestPaths = graph.GetShortestPathsTo (recorder.GetOrCreateNode (rd.callsite.caller));
+				var shortestPaths = graph.GetShortestPathsTo (recorder.GetOrCreateNode (rd.callsite.caller), returnMultiple: false);
 				if (shortestPaths == null) {
 					throw new Exception("null shortestpaths");
 				}
@@ -330,6 +352,9 @@ namespace Mono.Linker
 				// there might be multiple dangerous reaching datas for this method.
 				// each reachingdata is treated as unique.
  			 	var start = "[" + ((MemberReference)categoryNode).Module.ToString () + "]" + categoryNode.ToString () + " -> " + reachingData.callsite.callee.ToString ();
+				// var random = new System.Random();
+				// string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+				// var start = new String(Enumerable.Repeat(chars, 100).Select(s => s[random.Next(s.Length)]).ToArray());
 				// TODO: fix this.
 				// because we are using value types, and the graph doesn't support updating value type fields
 				// because it can't return any membersr by ref,

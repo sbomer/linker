@@ -137,7 +137,7 @@ namespace Mono.Linker.Steps {
 
 		void MarkAndPreserveAll (TypeDefinition type)
 		{
-			Context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.EmbeddedXml, source = _resourceAssembly, entry = type });
+			Context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.XmlDescriptor, source = _xmlDocumentLocation, entry = type });
 			Annotations.Push (type);
 			Annotations.SetPreserve (type, TypePreserve.All);
 
@@ -257,7 +257,7 @@ namespace Mono.Linker.Steps {
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {type.FullName} ({existingLevel}).  Duplicate uses ({duplicateLevel})"); 
 			} 
 
-			Context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.EmbeddedXml, source = _resourceAssembly, entry = type });
+			Context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.XmlDescriptor, source = _xmlDocumentLocation, entry = type });
 			Annotations.Push (type);
 			Tracer.AddDirectDependency (this, type);
 
@@ -361,7 +361,7 @@ namespace Mono.Linker.Steps {
 				if (Annotations.IsMarked (field))
 					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
 				
-				Context.MarkingHelpers.MarkEntryField (field, new EntryInfo { kind = EntryKind.EmbeddedXml, source = _resourceAssembly, entry = field });
+				Context.MarkingHelpers.MarkEntryField (field, new EntryInfo { kind = EntryKind.XmlDescriptor, source = _xmlDocumentLocation, entry = field });
 			} else {
 				AddUnresolveMarker (string.Format ("T: {0}; F: {1}", type, signature));
 			}
@@ -433,7 +433,7 @@ namespace Mono.Linker.Steps {
 			if (Annotations.IsMarked (method)) 
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}"); 
 
-			Context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo { kind = EntryKind.EmbeddedXml, source = _resourceAssembly, entry = method });
+			Context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo { kind = EntryKind.XmlDescriptor, source = _xmlDocumentLocation, entry = method });
 			Annotations.MarkIndirectlyCalledMethod (method);
 			Tracer.AddDirectDependency (this, method);
 			Annotations.SetAction (method, MethodAction.Parse);

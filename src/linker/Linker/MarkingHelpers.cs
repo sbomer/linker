@@ -5,9 +5,13 @@ namespace Mono.Linker {
 
 	// MarkModel
 	public enum EntryKind {
-		EmbeddedXml, // from embedded XML in an assembly
+		XmlDescriptor, // from embedded XML in an assembly
 		RootAssembly, // from a root assembly
 		AssemblyAction, // from an assembly action
+		AssemblyOrModuleCustomAttribute, // currently, linker marks custom attributes in assemblies
+			// pretty aggressively, but may not keep the assembly anyway.
+		//ModuleCustomAttribute, // similar.  it marks ca's in modules up-front.
+			// and we don't know at that point if the module will be kept.
 	}
 	public struct EntryInfo {
 		public EntryKind kind;
@@ -33,6 +37,9 @@ namespace Mono.Linker {
 
 		public void MarkEntryType (TypeDefinition type, EntryInfo info)
 		{
+			if (info.source == null) {
+				throw new Exception("null info!");
+			}
 			// called for copy/save, or for xml/roots.
 			_context.Annotations.Recorder.RecordEntryType (type, info);
 			_context.Annotations.Mark (type);
@@ -49,6 +56,13 @@ namespace Mono.Linker {
 			_context.Annotations.Mark (type);
 			if (_context.KeepTypeForwarderOnlyAssemblies)
 				_context.Annotations.Mark (module);
+		}
+
+		public void MarkEntryCustomAttribute (CustomAttribute ca, EntryInfo info)
+		{
+			// this helper is different - it's called from Annotations, which already does Mark().
+			// _context.Annotations.Mark ()
+			_context.Annotations.Recorder.RecordAssemblyCustomAttribute (ca, info);
 		}
 	}
 }

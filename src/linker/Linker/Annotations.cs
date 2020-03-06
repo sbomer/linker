@@ -159,14 +159,8 @@ namespace Mono.Linker {
 
 		public void Mark (IMetadataTokenProvider provider)
 		{
-			Mark (provider, new DependencyInfo { kind = DependencyKind.Untracked });
-		}
-
-		public void Mark (IMetadataTokenProvider provider, DependencyInfo reason)
-		{
 			marked.Add (provider);
 			Tracer.AddDependency (provider, true);
-			// call into dependency recorder...
 		}
 
 		public void Mark (CustomAttribute attribute)
@@ -467,6 +461,71 @@ namespace Mono.Linker {
 
 		// TODO: move these helpers into MarkingHelpers.
 
+		public void MarkCustomAttribute (DependencyInfo reason, CustomAttribute ca)
+		{
+			// the linker doesn't really distinguish between an assembly and a MainModule.
+			// it marks Modules, and later checks if an assembly is used by checking whether the MainModule was marked.
+			// because of this, assembly attributes (which don't logically belong to a module) are parent-less.
+			// instead, we make the same assumption that they are 1-to-1 with the MainModule.
+			switch (reason.kind) {
+			case DependencyKind.CustomAttribute:
+			case DependencyKind.GenericParameterCustomAttribute:
+			case DependencyKind.GenericParameterConstraintCustomAttribute:
+			case DependencyKind.ParameterAttribute:
+			case DependencyKind.ReturnTypeAttribute:
+				rule_dependency_recorder.RecordCustomAttribute (reason, ca);
+				break;
+			case DependencyKind.PropertyAccessedViaReflection:
+			case DependencyKind.PropertyOfType:
+			case DependencyKind.PropertyOfPropertyMethod:
+			case DependencyKind.EventAccessedViaReflection:
+			case DependencyKind.EventOfType:
+			case DependencyKind.EventOfEventMethod:
+				System.Diagnostics.Debug.Assert (reason.genericKind == GenericDependencyKind.CustomAttribute);
+				rule_dependency_recorder.RecordCustomAttribute (reason, ca);
+				break;
+			case DependencyKind.AssemblyOrModuleCustomAttribute:
+				context.MarkingHelpers.MarkEntryCustomAttribute (ca, new EntryInfo { kind = EntryKind.AssemblyOrModuleCustomAttribute, source = reason.source, entry = ca });
+				break;
+			default:
+				throw new Exception("can't get here");
+			}
+			Mark (ca);
+		}
+
+		public void MarkScopeOfType (TypeDefinition type, IMetadataScope scope)
+		{
+			if (scope.GetType() != typeof(Mono.Cecil.ModuleDefinition)) {
+				throw new Exception("non-module scope!?");
+			}
+			rule_dependency_recorder.RecordScopeOfType (type, scope);
+			Mark (scope);
+		}
+
+		public void MarkMethodWithReason (DependencyInfo reason, MethodDefinition method)
+		{
+			rule_dependency_recorder.RecordMethodWithReason (reason, method);
+			Mark (method);
+		}
+
+		public void MarkFieldWithReason (DependencyInfo reason, FieldDefinition field)
+		{
+			// TODO: if we ever don't set source, then the reason source might be NULL.
+			// need to handle this better.
+			rule_dependency_recorder.RecordFieldWithReason (reason, field);
+			Mark (field);
+		}
+
+		public void MarkTypeWithReason (DependencyInfo reason, TypeDefinition type)
+		{
+			rule_dependency_recorder.RecordTypeWithReason (reason, type);
+			if (reason.source == null) {
+				if (type.ToString() == "System.IDisposable")
+					System.Diagnostics.Debugger.Break();
+			}
+			Mark (type);
+		}
+
 		// every call to Annotations.Mark should ultimately go through one of these helpers,
 		// each of which tracks a "reason" that the item was marked.
 
@@ -489,9 +548,10 @@ namespace Mono.Linker {
 			// there shouldn't be... maybe?
 		}
 
-		public void MarkAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target)
+		public void MarkMethodAccessedViaReflection (MethodDefinition source, MethodDefinition accessedMethod)
 		{
-			rule_dependency_recorder.RecordAnalyzedReflectionAccess (source, target);
+			Mark (accessedMethod);
+			rule_dependency_recorder.RecordAnalyzedReflectionAccess (source, accessedMethod);
 		}
 
 
@@ -542,6 +602,12 @@ namespace Mono.Linker {
 		{
 			context.Annotations.Mark (cctor);
 			rule_dependency_recorder.RecordTriggersStaticConstructorForCalledMethod (method, cctor);
+		}
+
+		public void MarkStaticConstructorForField (FieldDefinition field, MethodDefinition cctor)
+		{
+			context.Annotations.Mark (cctor);
+			rule_dependency_recorder.RecordStaticConstructorForField (field, cctor);
 		}
 
 		public void MarkInstantiatedByConstructor (MethodDefinition cctor, TypeDefinition type)
@@ -629,6 +695,15 @@ namespace Mono.Linker {
 			context.Annotations.Mark (method);
 			// it should already be in the graph as an entry method.
 			// assert that it's already been reported to the recorder?
+		}
+
+		// MarkingHelpers mark the field originally, with an EntryInfo.
+		// Annotations.MarkEntry* record it pretty much with no dependency.
+		public void MarkEntryField (FieldDefinition field)
+		{
+			System.Diagnostics.Debug.Assert (marked.Contains (field));
+			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.entry == field));
+			context.Annotations.Mark (field);
 		}
 
 		public void MarkDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type)

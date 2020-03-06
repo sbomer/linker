@@ -56,6 +56,9 @@ namespace Mono.Linker
 
 	public interface IRuleDependencyRecorder
 	{
+		void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method);
+		void RecordFieldWithReason (DependencyInfo reason, FieldDefinition field);
+		void RecordTypeWithReason (DependencyInfo reason, TypeDefinition type);
 		void RecordDirectCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data);
@@ -64,12 +67,18 @@ namespace Mono.Linker
 		void RecordDangerousMethod (MethodDefinition method);
 
 		void RecordEntryType (TypeDefinition type, EntryInfo info);
+
+		void RecordScopeOfType (TypeDefinition type, IMetadataScope scope);
 		void RecordEntryField (FieldDefinition field, EntryInfo info);
 		void RecordEntryMethod (MethodDefinition method, EntryInfo info);
+		void RecordAssemblyCustomAttribute (CustomAttribute ca, EntryInfo info);
 
 
 		void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type);
 		void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method);
+
+		void RecordCustomAttribute (DependencyInfo reason, CustomAttribute ca);
+
 
 		void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType);
 
@@ -79,6 +88,7 @@ namespace Mono.Linker
 //		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
 		void RecordTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor);
 		void RecordTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor);
+		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
 		void RecordDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type);
 		void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent);
 		void RecordOverride (MethodDefinition @base, MethodDefinition @override);
