@@ -49,12 +49,34 @@ namespace Mono.Linker
 		private void CheckThatEveryNodeHasAReason()
 		{
 			foreach (var node in graph.nodes) {
-				if (graph.edgesTo.ContainsKey (node))
-					continue;
-				if (recorder.entryInfo.Any(ei => ei.entry == node.Value))
-					continue;
-				// this node doesn't have a REASON to be in the graph!!!
-				throw new Exception("unaccounted-for node " + node.Value.ToString() + " has no reason!");
+				// each node either has an edge to it, or an entryinfo recording why it was placed in the graph as an entry point
+				System.Diagnostics.Debug.Assert (graph.edgesTo.ContainsKey (node) || recorder.entryInfo.Any(ei => ei.entry == node.Value));
+				System.Diagnostics.Debug.Assert (
+					node.Value is MethodDefinition || node.Value is FieldDefinition || node.Value is TypeDefinition ||
+					node.Value is MethodReference || node.Value is TypeReference || node.Value is FieldReference ||
+					node.Value is PropertyDefinition || node.Value is EventDefinition ||
+					node.Value is CustomAttribute
+				);
+				switch (node.Value) {
+				case MethodDefinition method:
+					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(method));
+					break;
+				case FieldDefinition field:
+					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(field));
+					break;
+				case TypeDefinition type:
+					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(type));
+					break;
+				case CustomAttribute attribute:
+					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(attribute));
+					break;
+				case IMetadataTokenProvider tokenProvider:
+					// method/type/field ref, or property/event
+					System.Diagnostics.Debug.Assert(!context.Annotations.IsMarked(tokenProvider));
+					break;
+				default:
+					throw new Exception("WAT");
+				}
 			}
 		}
 
@@ -98,7 +120,7 @@ namespace Mono.Linker
 			Node<NodeInfo> from = new Node<NodeInfo> ();
 			foreach (var edge in edges) {
 				from = edge.From;
-				System.Diagnostics.Debug.Assert (from.Value is MethodDefinition || from.Value is FieldDefinition || from.Value is TypeDefinition);
+
 				var prefixString = edge.Info.kind switch {
 					DependencyKind.DirectCall => "called from",
 					DependencyKind.VirtualCall => "maybe called virtually from",
@@ -108,24 +130,10 @@ namespace Mono.Linker
 					DependencyKind.Override => "override of",
 					DependencyKind.OverrideOnInstantiatedType => "of instantiated type",
 					DependencyKind.MethodAccessedViaReflection => "reflected over by",
+					DependencyKind.GenericArgumentType => "generic argument of",
 					_ => $"{edge.Info.kind}",
 				};
 				prefixString += ": ";
-				switch (edge.Info.genericKind) {
-				case GenericDependencyKind.GenericArgument:
-					prefixString = "generic argument of " + prefixString;
-					break;
-				case GenericDependencyKind.CustomAttribute:
-					prefixString = "custom attribute of " + prefixString;
-					break;
-				case GenericDependencyKind.None:
-					break;
-				case GenericDependencyKind.ModifierType:
-					prefixString = "modifier type of " + prefixString;
-					break;
-				default:
-					throw new Exception("not implemented");
-				}
 				prefixes.Add (prefixString);
 
 				// not a real mark reason, but only found at end.
@@ -161,8 +169,7 @@ namespace Mono.Linker
 				// why isn't there an entry?
 				var entryInfos = recorder.entryInfo.Where (ei => ei.entry == outerNodeNode.Value);
 				if (entryInfos.Count() == 0) {
-					Console.Error.WriteLine ("no entry info found for entry node " + outerNodeNode.Value.ToString());
-					throw new Exception("wat");
+					throw new Exception("no entry info found for entry node");
 				}
 
 				entryInfo = entryInfos.Single ();
@@ -190,14 +197,11 @@ namespace Mono.Linker
 			var prefixLength = prefixes.Select(p => p.Length).Max();
 
 			int prefixIndex = 0;
-			System.Console.WriteLine ("num prefixes: " + prefixes.Count ());
-			System.Console.WriteLine ("edges count" + edges.Count ());
 
 			// build the trace
 			trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], reachingData.callsite.callee));
 			trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], immediateCaller));
 			foreach (var edge in edges) {
-				System.Console.WriteLine("prefix index: " + prefixIndex);
 				from = edge.From;
 				trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], from.Value));
 			}

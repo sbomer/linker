@@ -66,5 +66,28 @@ namespace Mono.Linker {
 			// _context.Annotations.Mark ()
 			_context.Annotations.Recorder.RecordAssemblyCustomAttribute (ca, info);
 		}
+
+		public void MarkMethodSpec (MethodSpecification spec, DependencyInfo reason) {
+			_context.Annotations.Recorder.RecordMethodSpecWithReason (reason, spec);
+		}
+
+		// TODO: get rid of these unnecessary helpers
+		public void MarkTypeSpec (TypeSpecification spec, DependencyInfo reason) {
+			// this is not marked, but we still put it in the graph.
+			_context.Annotations.Recorder.RecordTypeSpecWithReason (reason, spec);
+		}
+
+		public void MarkFieldOnGenericInstance (FieldReference field, DependencyInfo reason) {
+			_context.Annotations.Recorder.RecordFieldOnGenericInstance (reason, field);
+		}
+
+		public void MarkProperty (PropertyDefinition property, DependencyInfo reason) {
+			_context.Annotations.Recorder.RecordPropertyWithReason (reason, property);
+		}
+
+		public void MarkEvent (EventDefinition evt, DependencyInfo reason) {
+			_context.Annotations.Recorder.RecordEventWithReason (reason, evt);
+		}
+
 	}
 }

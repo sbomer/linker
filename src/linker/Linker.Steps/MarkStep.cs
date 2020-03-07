@@ -68,8 +68,6 @@ namespace Mono.Linker.Steps {
 		{
 			_context = context;
 
-//			Console.Error.WriteLine ("waiting to process MarkStep");
-//			Console.ReadLine ();
 			Initialize ();
 			Process ();
 			Complete ();
@@ -258,6 +256,7 @@ namespace Mono.Linker.Steps {
 
 			if (type.HasProperties) {
 				// TODO: this won't actually mark property methods!
+				// but they'll be marked by the method marking logic. so no bug here.
 				foreach (var property in type.Properties) {
 					MarkProperty (property, new DependencyInfo { kind = DependencyKind.PropertyOfType, source = type });
 				}
@@ -400,7 +399,7 @@ namespace Mono.Linker.Steps {
 			var @base = overrideInformation.Base;
 			// System.Diagnostics.Debug.Assert (method == virtualMethod);
 			if (method != virtualMethod) {
-				Console.Error.WriteLine("override processing for " + method.ToString() + " gives override: " + method.ToString() + " of " + @base.ToString());
+				_context.LogMessage("override processing for " + method.ToString() + " gives override: " + method.ToString() + " of " + @base.ToString());
 			}
 			if (!Annotations.IsMarked (method.DeclaringType))
 				return;
@@ -891,6 +890,7 @@ namespace Mono.Linker.Steps {
 				if (property != null)
 					return property;
 
+				// what if it's generic?
 				type = type.BaseType?.Resolve ();
 			}
 
@@ -922,6 +922,7 @@ namespace Mono.Linker.Steps {
 				if (field != null)
 					return field;
 
+				// generic?
 				type = type.BaseType?.Resolve ();
 			}
 
@@ -935,6 +936,7 @@ namespace Mono.Linker.Steps {
 				if (method != null)
 					return method;
 
+				// generic?
 				type = type.BaseType.Resolve ();
 			}
 
@@ -1134,22 +1136,42 @@ namespace Mono.Linker.Steps {
 		protected void MarkField (FieldReference reference, DependencyInfo reason)
 		{
 
-			FieldDefinition field = reference.Resolve ();
 
 			if (reference.DeclaringType is GenericInstanceType) {
+				// Console.WriteLine("marking generic field ref " + reference.ToString());
 				// with an additional reason of marking the type.
 				// this is necessary because the fieldref may have a generic instance type
 				// which is different from the type of the resolved field.
 				// we want to make sure that the generic parameters of this type get marked.
 				// blame the resolved field, not the generic instance (which is never marked on its own)
-				if (field != null) {
-					MarkType (reference.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfField, source = field });
+				if (reference.Resolve () != null) {
+					switch (reason.kind) {
+					case DependencyKind.FieldAccess:
+					case DependencyKind.Ldtoken:
+						// expect that we can get a generic fieldref from these instructions.
+						// what does resolving a field do?
+						// field with generic type? only allowed if type parameter is on theh type.
+						// unlike methods.
+						break;
+					default:
+						// but I don't think other things can produce fieldrefs to fields on generic instances.
+						throw new NotImplementedException("weird");
+					}
+
+					// need to blame this field ref on the original reason (without actually marking it)
+					_context.MarkingHelpers.MarkFieldOnGenericInstance (reference, reason);
+					// need to blame this field ref.
+					MarkType (reference.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfField, source = reference });
+					// but the MarkField of the def needs to be blamed on this ref, not the original reason.
+					reason = new DependencyInfo { kind = DependencyKind.FieldOnGenericInstance, source = reference };
+
 				} else {
 					throw new Exception("what to do here?");
 					// used to MarkType (reference.DeclaringType)...
 					// if the field ref is a generic type, 
 					//MarkType (reference.DeclaringType); // no reason, hopefully uncommon.
 				}
+
 				// BUT: problem is this field itself won't actually get marked.
 				// only its resolved one will.
 
@@ -1158,10 +1180,8 @@ namespace Mono.Linker.Steps {
 				// when the instantiation doesn't exist as a definition, but only as a reference (and therefore doesn't get "marked" per-se)?
 				// unknown so far.
 				// should never mark GenericInstType.
-
-
 			}
-
+			FieldDefinition field = reference.Resolve ();
 
 			if (field == null) {
 				HandleUnresolvedField (reference);
@@ -1211,6 +1231,7 @@ namespace Mono.Linker.Steps {
 				case DependencyKind.InteropMethodDependency:
 				case DependencyKind.FieldReferencedByAttribute:
 				case DependencyKind.Ldtoken:
+				case DependencyKind.FieldOnGenericInstance:
 					// generic: mark cctor for this field if we don't have a better reason.
 					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.CctorForField, source = field });
 					break;
@@ -1237,6 +1258,7 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.InteropMethodDependency:
 			case DependencyKind.FieldReferencedByAttribute:
 			case DependencyKind.Ldtoken:
+			case DependencyKind.FieldOnGenericInstance:
 				Annotations.MarkFieldWithReason (reason, field);
 				break;
 			case DependencyKind.EntryField:
@@ -1281,7 +1303,7 @@ namespace Mono.Linker.Steps {
 
 			// mark any generic parameters for the same reason
 			// that we mark the generic instantiation itself.
-			reference = GetOriginalType (reference, reason);
+			(reference, reason) = GetOriginalType (reference, reason);
 
 			if (reference is FunctionPointerType)
 				return null;
@@ -1316,7 +1338,7 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.DeclaringTypeOfField:
 			case DependencyKind.DeclaringTypeOfType:
 			case DependencyKind.FieldType:
-			case DependencyKind.GenericArgument: // generic instantiation typeref -> argument type
+			case DependencyKind.GenericArgumentType: // generic instantiation typeref -> argument type
 			case DependencyKind.DeclaringTypeOfMethod:
 			case DependencyKind.InterfaceImplementation:
 			case DependencyKind.GenericParameterConstraintType:
@@ -1332,6 +1354,8 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.CustomAttributeArgumentValue:
 			case DependencyKind.UnreachableBodyRequirement:
 			case DependencyKind.DeclaringTypeOfCalledMethod:
+			case DependencyKind.ElementType: // instantiation -> resolved type
+			case DependencyKind.ModifierType: // volatile string -> system.volatile
 				Annotations.MarkTypeWithReason (reason, type);
 				break;
 			// since we can get here for generic arguments of methods, all
@@ -1339,8 +1363,7 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.DirectCall:
 			case DependencyKind.VirtualCall:
 			case DependencyKind.Ldftn:
-				System.Diagnostics.Debug.Assert (reason.genericKind == GenericDependencyKind.GenericArgument);
-				Annotations.MarkTypeWithReason (reason, type);
+				throw new Exception("shouldn't blame a typedef of generic method arg on the method's caller, but on generic method itself!");
 				break;
 			default:
 				throw new NotImplementedException(reason.kind.ToString());
@@ -1352,7 +1375,7 @@ namespace Mono.Linker.Steps {
 					case DependencyKind.DeclaringTypeOfCalledMethod:
 						MarkStaticConstructor (type, new DependencyInfo { kind = DependencyKind.TriggersCctorForCalledMethod, source = reason.source });
 						break;
-					case DependencyKind.GenericArgument:
+					case DependencyKind.GenericArgumentType:
 					case DependencyKind.DeclaringTypeOfMethod:
 					case DependencyKind.DeclaringTypeOfField:
 					case DependencyKind.InterfaceImplementation:
@@ -1370,6 +1393,7 @@ namespace Mono.Linker.Steps {
 					case DependencyKind.UnreachableBodyRequirement:
 					case DependencyKind.FieldType:
 					case DependencyKind.EntryType:
+					case DependencyKind.ElementType:
 						// for entrytype, we don't have a reason the type is kept, beyond the user said so.
 						// maybe EntryType can be an intermediate reason that a method is kept.
 						// we can track an entry kind that is:
@@ -1382,9 +1406,7 @@ namespace Mono.Linker.Steps {
 					case DependencyKind.DirectCall:
 					case DependencyKind.VirtualCall:
 					case DependencyKind.Ldftn:
-						System.Diagnostics.Debug.Assert (reason.genericKind == GenericDependencyKind.GenericArgument);
-						MarkStaticConstructor (type, new DependencyInfo { kind = DependencyKind.CctorForType, source = type });
-						break;
+						throw new Exception("blocked by above");
 					default:
 						// we also mark a type's cctor if the type is marked for any other reason, even if the cctor may not have been
 						// called at runtime. if parameters or return type mark a type, if called with null it might still not trigger cctor
@@ -1683,9 +1705,10 @@ namespace Mono.Linker.Steps {
 
 					// oh.. this is if we don't match any members explicitly.
 					while (type != null) {
-						Console.Error.WriteLine("non-understood DebuggerDisplayAttribute: " + attribute.ToString());
+						_context.LogMessage("warning: non-understood DebuggerDisplayAttribute: " + attribute.ToString());
 						MarkMethods (type, new DependencyInfo { kind = DependencyKind.MethodKeptForNonUnderstoodAttribute, source = attribute });
 						MarkFields (type, includeStatic: true, new DependencyInfo { kind = DependencyKind.FieldReferencedByAttribute, source = attribute });
+						// this seems like it will miss generic parameters.
 						type = type.BaseType?.Resolve ();
 					}
 					return;
@@ -2044,17 +2067,23 @@ namespace Mono.Linker.Steps {
 			return null;
 		}
 
-		protected TypeReference GetOriginalType (TypeReference type, DependencyInfo reason)
+		protected (TypeReference, DependencyInfo) GetOriginalType (TypeReference type, DependencyInfo reason)
 		{
+			// why is this a while loop?
 			while (type is TypeSpecification specification) {
-				if (type is GenericInstanceType git)
-					MarkGenericArguments (git, reason);
+				if (type is GenericInstanceType git) {
+					// record an edge from whatever got here to the typeref. then this call will do from ref -> argument.
+					MarkGenericArguments (git);
+					if (git.ElementType is TypeSpecification) {
+						throw new Exception("HUH?");
+					}
+				}
 
 				if (type is IModifierType mod) {
 					// similarly, the modified type is never marked.
 					// we blame the reason that the modified type was marked,
 					// for moth the modifier type and the type that was modified.
-					MarkModifierType (mod, reason);
+					MarkModifierType (mod);
 				}
 
 				if (type is FunctionPointerType fnptr) {
@@ -2066,10 +2095,17 @@ namespace Mono.Linker.Steps {
 				// for T<F>, this is T<>.
 				// for arrays, I'm guessing this is the array's element type, not the array type constructor:
 				// S[] -> S. not S[] -> []`1
-				type = specification.ElementType;
+
+				// at this point, we will have an edge from the tyespec to the generic arguments
+				// but we still need one from the originator to the typespec,
+				// and from the typespec to the element type.
+				// the element type will be marked in MarkType, so just pass along a new reason.
+				// the originator -> typespec must be handled here.
+				_context.MarkingHelpers.MarkTypeSpec (specification, reason);
+				(type, reason) = (specification.ElementType, new DependencyInfo { kind = DependencyKind.ElementType, source = specification });
 			}
 
-			return type;
+			return (type, reason);
 		}
 
 		void MarkParameters (FunctionPointerType fnptr)
@@ -2083,13 +2119,13 @@ namespace Mono.Linker.Steps {
 			}
 		}
 
-		void MarkModifierType (IModifierType mod, DependencyInfo reason)
+		void MarkModifierType (IModifierType mod)
 		{
 			// marking the modifier type...
-			MarkType (mod.ModifierType, new DependencyInfo { kind = reason.kind, genericKind = GenericDependencyKind.ModifierType, source = reason.source });
+			MarkType (mod.ModifierType, new DependencyInfo { kind = DependencyKind.ModifierType, source = mod });
 		}
 
-		void MarkGenericArguments (IGenericInstance instance, DependencyInfo reason)
+		void MarkGenericArguments (IGenericInstance instance)
 		{
 			foreach (TypeReference argument in instance.GenericArguments) {
 				// generic inst should never be marked. so generic arg is not a valid reason.
@@ -2105,7 +2141,7 @@ namespace Mono.Linker.Steps {
 				// the linker is smarter than that.
 				// so, blame the immediate "callsite", not the virtual that everyone uses.
 				// there IS a direct path.
-				MarkType (argument, new DependencyInfo { kind = reason.kind, genericKind = GenericDependencyKind.GenericArgument, source = reason.source });
+				MarkType (argument, new DependencyInfo { kind = DependencyKind.GenericArgumentType, source = instance });
 			}
 			// problem: the instance is a typeref, not a typedef necessarily.
 			// maybe that's OK! just try it. :)
@@ -2135,7 +2171,7 @@ namespace Mono.Linker.Steps {
 
 				var argument_definition = argument.Resolve ();
 				// this will have kind generic argument constructor
-				MarkDefaultConstructor (argument_definition);
+				MarkDefaultConstructor (argument_definition, new DependencyInfo { kind = DependencyKind.DefaultCtorForNewConstrainedGenericArgument,, source = instance });
 			}
 		}
 
@@ -2293,7 +2329,7 @@ namespace Mono.Linker.Steps {
 
 		protected virtual MethodDefinition MarkMethod (MethodReference reference, DependencyInfo reason)
 		{
-			reference = GetOriginalMethod (reference, reason);
+			(reference, reason) = GetOriginalMethod (reference, reason);
 
 			if (reference.DeclaringType is ArrayType)
 				return null;
@@ -2315,6 +2351,7 @@ namespace Mono.Linker.Steps {
 				// we'll get an error! :)
 				// if we can't resolve the original method,
 				// then there's no reason to blame it.
+				// same as field logic.
 				if (method != null) {
 					MarkType (reference.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfMethod, source = method });
 				} else {
@@ -2358,16 +2395,24 @@ namespace Mono.Linker.Steps {
 			return assembly;
 		}
 
-		protected MethodReference GetOriginalMethod (MethodReference method, DependencyInfo reason)
+		protected (MethodReference, DependencyInfo) GetOriginalMethod (MethodReference method, DependencyInfo reason)
 		{
 			while (method is MethodSpecification specification) {
-				if (method is GenericInstanceMethod gim)
-					MarkGenericArguments (gim, reason);
+				if (method is GenericInstanceMethod gim) {
+					// TODO: this needs to be updated!
+					MarkGenericArguments (gim);
+				}
 
-				method = specification.ElementMethod;
+				// MarkMethod is going to now blame the methodspec.
+				// we need to add an edge from the originator of the methodspec to it.
+				_context.MarkingHelpers.MarkMethodSpec (specification, reason);
+				(method, reason) = (specification.ElementMethod, new DependencyInfo { kind = DependencyKind.ElementMethod, source = specification });
+				if (method is MethodSpecification) {
+					throw new Exception("huh?");
+				}
 			}
 
-			return method;
+			return (method, reason);
 		}
 
 		protected virtual void ProcessMethod (MethodDefinition method, DependencyInfo reason)
@@ -2444,6 +2489,8 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.VirtualNeededDueToPreservedScope:
 			case DependencyKind.PreserveDependency:
 			case DependencyKind.MethodForType:
+			case DependencyKind.ElementMethod:
+			case DependencyKind.EventMethod:
 				Annotations.MarkMethodWithReason (reason, method);
 				break;
 			default:
@@ -2487,6 +2534,8 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.VirtualNeededDueToPreservedScope:
 			case DependencyKind.PreserveDependency:
 			case DependencyKind.MethodForType:
+			case DependencyKind.ElementMethod:
+			case DependencyKind.EventMethod:
 				MarkType (method.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfMethod, source = method });
 				break;
 			default:
@@ -2680,7 +2729,8 @@ namespace Mono.Linker.Steps {
 					return;
 
 				var baseType = method.DeclaringType.BaseType.Resolve ();
-				if (!MarkDefaultConstructor (baseType))
+				// what if this is generic???
+				if (!MarkDefaultConstructor (baseType, new DependencyInfo { kind = DependencyKind.BaseDefaultCtorForStubbedMethod, source = mehod });
 					throw new NotSupportedException ($"Cannot stub constructor on '{method.DeclaringType}' when base type does not have default constructor");
 
 				break;
@@ -2802,19 +2852,21 @@ namespace Mono.Linker.Steps {
 
 		protected void MarkProperty (PropertyDefinition prop, DependencyInfo reason)
 		{
+			// put properties into the graph, even though we don't mark them separately.
+			_context.MarkingHelpers.MarkProperty (prop, reason);
 			// TODO: isn't it a bug that this doesn't keep property methods???
-			MarkCustomAttributes (prop, new DependencyInfo { kind = reason.kind, genericKind = GenericDependencyKind.CustomAttribute, source = reason.source });
+			MarkCustomAttributes (prop, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = prop });
 			DoAdditionalPropertyProcessing (prop);
 		}
 
 		// TODO: why not handle propertie and events the same way?
 		protected virtual void MarkEvent (EventDefinition evt, DependencyInfo reason)
 		{
-			MarkCustomAttributes (evt, new DependencyInfo { kind = reason.kind, genericKind = GenericDependencyKind.CustomAttribute, source = reason.source });
-			// PROBLEM: this will give METHODS the event reasons.
-			MarkMethodIfNotNull (evt.AddMethod, reason);
-			MarkMethodIfNotNull (evt.InvokeMethod, reason);
-			MarkMethodIfNotNull (evt.RemoveMethod, reason);
+			_context.MarkingHelpers.MarkEvent (evt, reason);
+			MarkCustomAttributes (evt, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = evt });
+			MarkMethodIfNotNull (evt.AddMethod, new DependencyInfo { kind = DependencyKind.EventMethod, source = evt });
+			MarkMethodIfNotNull (evt.InvokeMethod, new DependencyInfo { kind = DependencyKind.EventMethod, source = evt });
+			MarkMethodIfNotNull (evt.RemoveMethod, new DependencyInfo { kind = DependencyKind.EventMethod, source = evt });
 			DoAdditionalEventProcessing (evt);
 		}
 
@@ -3091,17 +3143,6 @@ namespace Mono.Linker.Steps {
 				try {
 					mark ();
 					_context.ReflectionPatternRecorder.RecognizedReflectionAccessPattern (MethodCalling, MethodCalled, accessedItem);
-					Console.Error.WriteLine("reflection: over " + accessedItem.ToString() + " (type: " + accessedItem.GetType().ToString() + ")");
-					// if (accessedItem is MethodDefinition methodAccessed) {
-					// 	// its existence is enough for the access.
-					// 	// if there's an Invoke, then it also needs to be safe.
-					// 	// for now, assume that any accessed method WILL BE INVOKED.
-					// 	// and track it as such FROM THE SAME CALLSITE THAT ACCESSED IT!
-					// 	_context.Annotations.MarkAnalyzedReflectionAccess (MethodCalling, methodAccessed);
-					// }
-					// if it's a type, then it's enough for a type to exist.
-					// if there's a GetMethod on unknown type, then either it needs to have all members kept
-					// or the matching method kept. or just report an error.
 				} finally {
 					_context.Tracer.Pop ();
 				}

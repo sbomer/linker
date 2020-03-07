@@ -59,6 +59,9 @@ namespace Mono.Linker
 		void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method);
 		void RecordFieldWithReason (DependencyInfo reason, FieldDefinition field);
 		void RecordTypeWithReason (DependencyInfo reason, TypeDefinition type);
+		void RecordTypeSpecWithReason (DependencyInfo reason, TypeSpecification spec);
+		void RecordMethodSpecWithReason (DependencyInfo reason, MethodSpecification spec);
+		void RecordFieldOnGenericInstance (DependencyInfo reason, FieldReference field);
 		void RecordDirectCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data);
@@ -79,6 +82,8 @@ namespace Mono.Linker
 
 		void RecordCustomAttribute (DependencyInfo reason, CustomAttribute ca);
 
+		void RecordPropertyWithReason (DependencyInfo reason, PropertyDefinition property);
+		void RecordEventWithReason (DependencyInfo reason, EventDefinition evt);
 
 		void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType);
 

@@ -30,7 +30,7 @@ namespace Mono.Linker
 		InstantiatedFullyPreservedType, // we mark fully preserved types as instantiated (no source)
 		AlwaysInstantiatedType, // we always mark certain types as instantiated (no source)
 		MethodForInstantiatedType,
-		GenericArgument, // might be used for generic arg of types or methods.
+		GenericArgumentType, // might be used for generic arg of types or methods.
 		Ldvirtftn, // method is referenced in an instruction that does ldvirtftn
 		Ldftn,
 		IsInst,
@@ -61,14 +61,14 @@ namespace Mono.Linker
 		GenericParameterConstraintType, // when a type (or method?) generic parameter has a base type constraint,
 		// this is the "reason" that the base type of the constraint gets marked.
 		// from the generic type -> constraint type. no separate node for the parameter.
-		GenericParameterConstraintMethod, // when marking default ctors for types that are generic params
+		DefaultCtorForNewConstrainedGenericArgument, // when marking default ctors for arg types that are generic params
+		BaseDefaultCtorForStubbedMethod,
 		ParameterType, // of method
 		ParameterAttribute, // attribute on parameter of a method
 		ReturnTypeAttribute, // attribute on return type of a method
 		ReturnType, // of method
 		VariableType, // of method
 		ScopeOfType, // scope of type
-
 
 		MethodPreservedForType, // type -> method
 		FieldPreservedForType, // type -> field
@@ -119,6 +119,16 @@ namespace Mono.Linker
 		PropertyOfPropertyMethod, // modified by CustomAttribute
 		EventOfType,
 		EventOfEventMethod,
+		EventMethod, // marking a method because its event was marked
+
+		ElementType, // dependency from generic instance type -> generic typedef
+		ElementMethod, // dependency from generic instance method-> generic methoddef
+		FieldOnGenericInstance, // dependency from fieldref on generic instance -> field on generic typedef
+		ModifierType, // dependency from volatile string -> system.volatile
+		// used to blame the modifier type on whatever marked the modreq(Foo) typeref.
+		//MethodParameter, // used to blame CAs on parameters on whatever marked the method
+		//MethodReturnType,
+
 
 		CustomAttribute, // ICustomAttribute on a ICustomAttributeProvider
 		AssemblyOrModuleCustomAttribute, // the "source" isn't in the graph! special case.
@@ -148,27 +158,9 @@ namespace Mono.Linker
 		UserDependencyType, // customattribute -> type
 	}
 
-	public enum GenericDependencyKind {
-		None,
-		GenericArgument, // which one? let's not care for now.
-					// used to blame marking of generic arg type on whatever marked the
-					// generic instantiated type/method reference.
-		ModifierType, // used to blame the modifier type on whatever marked the modreq(Foo) typeref.
-		//MethodParameter, // used to blame CAs on parameters on whatever marked the method
-		//MethodReturnType,
-		CustomAttribute, // for marking customattribute on a property or event (which doesn't have node)
-
-//				ModifierType, // when a type has a modreq(IsVolatile) for example, this marks IsVolatile.
-
-// not used		GenericParameter, // these can have customattributes and constraints.
-
-	}
-
 	public struct DependencyInfo {
 		public DependencyKind kind;
 		public object source;
-		public object source2;
 		public int instructionIndex;
-		public GenericDependencyKind genericKind;
 	}
 }

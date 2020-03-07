@@ -62,14 +62,16 @@ namespace Mono.Linker {
 		protected readonly HashSet<TypeDefinition> marked_instantiated = new HashSet<TypeDefinition> ();
 		protected readonly HashSet<MethodDefinition> indirectly_called = new HashSet<MethodDefinition>();
 
-		private readonly IRuleDependencyRecorder rule_dependency_recorder = new GraphDependencyRecorder ();
-
+		private readonly IRuleDependencyRecorder rule_dependency_recorder;
 		public SearchableDependencyGraph<NodeInfo, DependencyInfo> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
 		public HashSet<UnsafeReachingData> UnsafeReachingData => ((GraphDependencyRecorder)rule_dependency_recorder).unsafeReachingData;
 
 		public GraphDependencyRecorder Recorder=> ((GraphDependencyRecorder)rule_dependency_recorder);
 
-		public AnnotationStore (LinkContext context) => this.context = context;
+		public AnnotationStore (LinkContext context) {
+			this.context = context;
+			rule_dependency_recorder = new GraphDependencyRecorder (context);
+		}
 
 		public bool ProcessSatelliteAssemblies { get; set; }
 
@@ -481,9 +483,7 @@ namespace Mono.Linker {
 			case DependencyKind.EventAccessedViaReflection:
 			case DependencyKind.EventOfType:
 			case DependencyKind.EventOfEventMethod:
-				System.Diagnostics.Debug.Assert (reason.genericKind == GenericDependencyKind.CustomAttribute);
-				rule_dependency_recorder.RecordCustomAttribute (reason, ca);
-				break;
+				throw new Exception("can't get here");
 			case DependencyKind.AssemblyOrModuleCustomAttribute:
 				context.MarkingHelpers.MarkEntryCustomAttribute (ca, new EntryInfo { kind = EntryKind.AssemblyOrModuleCustomAttribute, source = reason.source, entry = ca });
 				break;
@@ -498,7 +498,9 @@ namespace Mono.Linker {
 			if (scope.GetType() != typeof(Mono.Cecil.ModuleDefinition)) {
 				throw new Exception("non-module scope!?");
 			}
-			rule_dependency_recorder.RecordScopeOfType (type, scope);
+			// rule_dependency_recorder.RecordScopeOfType (type, scope);
+			// don't record sccopes, because they would only be used for custom attributes,
+			// but we track module attributes as entry points currently.
 			Mark (scope);
 		}
 

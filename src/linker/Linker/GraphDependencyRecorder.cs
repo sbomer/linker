@@ -109,7 +109,7 @@ namespace Mono.Linker
 			if (raisedNode.TryGetValue (o, out Node<NodeInfo> node)) {
 				// if the node already exists, it might already be an entry.
 				if (node.Entry) {
-					Console.Error.WriteLine ("duplicate entry for " + o.ToString ());
+					context.LogMessage ("duplicate entry for " + o.ToString ());
 					return node;
 				} else {
 					// it already exsits in the graph, but not as an entry node...
@@ -164,7 +164,7 @@ namespace Mono.Linker
 					return node;
 				}
 				if (!node.Untracked) {
-					Console.Error.WriteLine("forgetting untracked node! " + o.ToString());
+					context.LogMessage("forgetting untracked node! " + o.ToString());
 				}
 				return node;
 			}
@@ -182,11 +182,13 @@ namespace Mono.Linker
 		// potentially unsafe dataflow results.
 		public readonly HashSet<UnsafeReachingData> unsafeReachingData;
 		public readonly HashSet<EntryInfo> entryInfo;
+		LinkContext context;
 
-		public GraphDependencyRecorder () {
+		public GraphDependencyRecorder (LinkContext context) {
 			graph = new SearchableDependencyGraph<NodeInfo, DependencyInfo> ();
 			unsafeReachingData = new HashSet<UnsafeReachingData> ();
 			entryInfo = new HashSet<EntryInfo> ();
+			this.context = context;
 		}
 
 		public void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method) {
@@ -201,8 +203,27 @@ namespace Mono.Linker
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (type), reason));
 		}
 
+		public void RecordTypeSpecWithReason (DependencyInfo reason, TypeSpecification spec) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (spec), reason));
+		}
+		public void RecordMethodSpecWithReason (DependencyInfo reason, MethodSpecification spec) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (spec), reason));
+		}
+
+		public void RecordFieldOnGenericInstance (DependencyInfo reason, FieldReference field) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (field), reason));
+		}
+
 		public void RecordCustomAttribute (DependencyInfo reason, CustomAttribute ca) {
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (ca), reason));
+		}
+
+		public void RecordPropertyWithReason (DependencyInfo reason, PropertyDefinition property) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (property), reason));
+		}
+
+		public void RecordEventWithReason (DependencyInfo reason, EventDefinition evt) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (evt), reason));
 		}
 
 		public void RecordDirectCall (MethodDefinition caller, MethodDefinition callee) {
@@ -217,19 +238,15 @@ namespace Mono.Linker
 		// read as: Record ContextSensitiveData reaches
 		// to mean that reflectionMethod is reached with data that is an unknown or unresolved string, from context ending with callsite in source.
 		public void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data) {
-			Console.WriteLine ("bad reflection: " + source.ToString() + " -> " + reflectionMethod.ToString());
 			// when we have an unanalyzed reflection call, put the callsite into the graph.
 			// just use valuetuple for now.
 			// and add an edge from the containing method of the callsite to the dangerous callsite.
 			// var callsite = (source, reflectionMethod, instructionIndex);
-			// graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (source), GetOrCreateDangerousNode (callsite), new DependencyInfo { kind = DependencyKind.ContainsDangerousCallsite }));
-			//graph.AddEdge (new Edge<NodeInfo, MarkReasonKind> (GetOrCreateNode (source), GetOrCreateNode (reflectionMethod), MarkReasonKind.UnanalyzedReflectionCall));
 			var callsite = new Callsite { caller = source, callee = reflectionMethod };
 			var reachingData = new UnsafeReachingData { callsite = callsite, data = data };
 			unsafeReachingData.Add (reachingData);
 		}
 		public void RecordAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target) {
-			Console.WriteLine ("good reflection: " + source.ToString() + " -> " + target.ToString());
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (source), GetOrCreateNode (target), new DependencyInfo { kind = DependencyKind.MethodAccessedViaReflection }));
 		}
 
