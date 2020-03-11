@@ -19,41 +19,22 @@ namespace Mono.Linker {
 			// also clearinitlocals which does the same
 			// also for sweepstep changin AddBypassNGenUsed to AddBypassNGen
 	}
-	public struct EntryInfo : IEquatable<EntryInfo> {
-		public EntryKind kind;
-		public object source;
-		public object entry;
-		public bool Equals(EntryInfo info) {
-			// if (this.kind != info.kind)
-			// 	return false;
-			// if (source != info.source)
-			// 	return false;
-			// if (entry != info.entry)
-			// 	return false;
-			// return true;
-			return (kind, source, entry) == (info.kind, info.source, info.entry);
-		}
+	readonly public struct EntryInfo : IEquatable<EntryInfo> {
+		public EntryKind Kind { get; }
+		public object Source { get; }
+		public object Entry { get; }
+		public bool Equals (EntryInfo info) => (Kind, Source, Entry) == (info.Kind, info.Source, info.Entry);
 		// TODO: use readonly
 		// TODO: define a ctor, and use tuple assignment for the ctor.
 		// definition should be really short.
-		// TODO: enable source code analysis to see if it tells me
-		// to define value equality.
-		public override bool Equals(Object o) {
-			return o is EntryInfo info && this.Equals(info);
-		}
-		public override int GetHashCode() {
-			// return kind.GetHashCode() * 17 + source.GetHashCode() * 23 + entry.GetHashCode() * 29;
-			// return System.HashCode.Combine(kind, source, entry);
-			// HashCode.Combine not available for net471.
-			return (kind, source, entry).GetHashCode();
-			// can also use ValueTuple.GetHashCode();
-		}
-		public static bool operator ==(EntryInfo lhs, EntryInfo rhs) {
-			return lhs.Equals(rhs);
-		}
-		public static bool operator !=(EntryInfo lhs, EntryInfo rhs) {
-			return !lhs.Equals(rhs);
-		}
+		public override bool Equals (Object o) => o is EntryInfo info && this.Equals (info);
+		public override int GetHashCode() => (Kind, Source, Entry).GetHashCode ();
+		public static bool operator == (EntryInfo lhs, EntryInfo rhs) => lhs.Equals (rhs);
+		public static bool operator != (EntryInfo lhs, EntryInfo rhs) => !lhs.Equals (rhs);
+		public EntryInfo (EntryKind kind, object source, object entry) => (Kind, Source, Entry) = (kind, source, entry);
+		public EntryInfo (EntryKind kind, object entry) => (Kind, Source, Entry) = (kind, default, entry);
+		// TODO: get rid of this ctor?
+		public EntryInfo (EntryKind kind) => (Kind, Source, Entry) = (kind, default, default);
 	}
 
 	public class MarkingHelpers {
@@ -74,7 +55,7 @@ namespace Mono.Linker {
 
 		public void MarkEntryType (TypeDefinition type, EntryInfo info)
 		{
-			if (info.source == null) {
+			if (info.Source == null) {
 				throw new Exception("null info!");
 			}
 			// called for copy/save, or for xml/roots.

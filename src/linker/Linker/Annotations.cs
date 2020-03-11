@@ -63,7 +63,7 @@ namespace Mono.Linker {
 		protected readonly HashSet<MethodDefinition> indirectly_called = new HashSet<MethodDefinition>();
 
 		private readonly IRuleDependencyRecorder rule_dependency_recorder;
-		public SearchableDependencyGraph<NodeInfo, DependencyInfo> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
+		public SearchableDependencyGraph<NodeInfo, DependencyKind> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
 		public HashSet<UnsafeReachingData> UnsafeReachingData => ((GraphDependencyRecorder)rule_dependency_recorder).unsafeReachingData;
 
 		public GraphDependencyRecorder Recorder=> ((GraphDependencyRecorder)rule_dependency_recorder);
@@ -473,7 +473,7 @@ namespace Mono.Linker {
 			// it marks Modules, and later checks if an assembly is used by checking whether the MainModule was marked.
 			// because of this, assembly attributes (which don't logically belong to a module) are parent-less.
 			// instead, we make the same assumption that they are 1-to-1 with the MainModule.
-			switch (reason.kind) {
+			switch (reason.Kind) {
 			case DependencyKind.CustomAttribute:
 			case DependencyKind.GenericParameterCustomAttribute:
 			case DependencyKind.GenericParameterConstraintCustomAttribute:
@@ -489,7 +489,7 @@ namespace Mono.Linker {
 			case DependencyKind.EventOfEventMethod:
 				throw new Exception("can't get here");
 			case DependencyKind.AssemblyOrModuleCustomAttribute:
-				context.MarkingHelpers.MarkEntryCustomAttribute (ca, new EntryInfo { kind = EntryKind.AssemblyOrModuleCustomAttribute, source = reason.source, entry = ca });
+				context.MarkingHelpers.MarkEntryCustomAttribute (ca, new EntryInfo (EntryKind.AssemblyOrModuleCustomAttribute, reason.Source, ca));
 				break;
 			default:
 				throw new Exception("can't get here");
@@ -525,7 +525,7 @@ namespace Mono.Linker {
 		public void MarkTypeWithReason (DependencyInfo reason, TypeDefinition type)
 		{
 			rule_dependency_recorder.RecordTypeWithReason (reason, type);
-			if (reason.source == null) {
+			if (reason.Source == null) {
 				if (type.ToString() == "System.IDisposable")
 					System.Diagnostics.Debugger.Break();
 			}
@@ -688,7 +688,7 @@ namespace Mono.Linker {
 			// assert that: it already has an entry reason
 			// it's already marked.
 			System.Diagnostics.Debug.Assert (marked.Contains (method));
-			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.entry == method));
+			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.Entry == method));
 			context.Annotations.Mark (method);
 			// it should already be in the graph as an entry method.
 			// assert that it's already been reported to the recorder?
@@ -699,7 +699,7 @@ namespace Mono.Linker {
 		public void MarkEntryField (FieldDefinition field)
 		{
 			System.Diagnostics.Debug.Assert (marked.Contains (field));
-			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.entry == field));
+			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.Entry == field));
 			context.Annotations.Mark (field);
 		}
 

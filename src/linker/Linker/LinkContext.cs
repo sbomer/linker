@@ -365,7 +365,7 @@ namespace Mono.Linker {
 
 			// if the action changes... we should probably not track it multiple times.
 			// figure it out later.
-			_annotations.SetAction (assembly, action, new EntryInfo { kind = EntryKind.AssemblyAction, source = source, entry = assembly });
+			_annotations.SetAction (assembly, action, new EntryInfo (EntryKind.AssemblyAction, source, assembly));
 		}
 
 		public static bool IsCore (AssemblyNameReference name)

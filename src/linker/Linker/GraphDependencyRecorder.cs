@@ -56,25 +56,17 @@ namespace Mono.Linker
 		public ReflectionData data;
 	}
 
-	public struct NodeInfo : IStartEndInfo {
-		public bool untracked;
-		public bool entry;
-		public bool dangerous;
-		public bool IsStart() => entry || untracked;
-		public bool IsEnd() => dangerous;
-
-		public bool Dangerous {
-			get => dangerous;
-			set => dangerous = value;
-		}
-		public bool Untracked {
-			get => untracked;
-			set => untracked = value;
-		}
-		public bool Entry {
-			get => entry;
-			set => entry = value;
-		}
+	readonly public struct NodeInfo : IStartEndInfo, IEquatable<NodeInfo> {
+		public bool Entry { get; }
+		public bool Dangerous { get; }
+		public bool IsStart() => Entry;
+		public bool IsEnd() => Dangerous;
+		public bool Equals (NodeInfo info) => (Entry, Dangerous).Equals((info.Entry, info.Dangerous));
+		public override bool Equals (Object o) => o is NodeInfo info && this.Equals (info);
+		public override int GetHashCode () => (Entry, Dangerous).GetHashCode ();
+		public static bool operator == (NodeInfo lhs, NodeInfo rhs) => lhs.Equals (rhs);
+		public static bool operator != (NodeInfo lhs, NodeInfo rhs) => !lhs.Equals (rhs);
+		public NodeInfo (bool entry) => (Entry, Dangerous) = (entry, default);
 	}
 
 	/// <summary>
@@ -147,70 +139,18 @@ namespace Mono.Linker
 					//     could mark assembly as an entry, and these as a dependency of the assembly...
 					//     maybe assemblies belong in the graph even though they are never marked.
 					// problem is that an assembly can be conceptually a dependency, but not kept.
-					//  how? 
+					//  how?
 					throw new Exception("attempted to add entry node for extant non-entry node");
 				}
 			} else {
 				// it didn't already exist... create it, set the bit, and cache it.
-				node = new Node<NodeInfo> (value: o);
-				node.Entry = true;
+				node = new Node<NodeInfo> (value: o, new NodeInfo (entry: true));
 				raisedNode [o] = node;
 				return node;
 			}
 		}
 
-		private Node<NodeInfo> GetOrCreateDangerousNode (object o) {
-			// TODO: get rid?
-			var n = GetOrCreateNode (o);
-			n.Dangerous = true;
-			raisedNode [o] = n;
-			return n;
-		}
-
-		private Node<NodeInfo> GetOrCreateUntrackedNode (object o) {
-			// dangerous.
-			// this can mutate raisedNode properties,
-			// without altering them in the graph.
-
-			// we track on theh node whether it was untracked or entry, so that the search
-			// can stop at such nodes. if we have marked it as an entry, we want to
-			// prefer that rather than untracked, so only actually mark it untracked
-			// if it's not already an entry.
-			// AND when marking entry, assert that it's not untracked.
-
-			// if not entry, this should be the first time.
-			// this might mutate a node that already was seen for another reason.
-			if (raisedNode.TryGetValue (o, out Node<NodeInfo> node)) {
-				// because we are never mutating the graph,
-				// we are forgetting about some untracked.
-				// we will now only report errors for nodes that are completely untracked.
-				// nodes that are partially untracked are reported, but there might still be a shorter path
-				// available with better tracking. FIX THS!
-
-
-
-				// this is already here. we don't want to mutate it.
-				// but it might not be untracked now.
-				// TODO: ensure we track everything!
-				if (node.Entry) {
-					// System.Diagnostics.Debug.Assert (!node.Untracked);
-					// seems to not be true for copy corelib... WHY? figure out later.
-					return node;
-				}
-				if (!node.Untracked) {
-					context.LogMessage("forgetting untracked node! " + o.ToString());
-				}
-				return node;
-			}
-
-			node = new Node<NodeInfo> (value: o);
-			node.Untracked = true;
-
-			raisedNode [o] = node;
-			return node;
-		}
-
-		public readonly SearchableDependencyGraph<NodeInfo, DependencyInfo> graph;
+		public readonly SearchableDependencyGraph<NodeInfo, DependencyKind> graph;
 
 		// in addition to a callgraph, this also stores information about non-understood dataflow to sometimes unsafe methods.
 		// potentially unsafe dataflow results.
@@ -220,7 +160,7 @@ namespace Mono.Linker
 		LinkContext context;
 
 		public GraphDependencyRecorder (LinkContext context) {
-			graph = new SearchableDependencyGraph<NodeInfo, DependencyInfo> ();
+			graph = new SearchableDependencyGraph<NodeInfo, DependencyKind> ();
 			unsafeReachingData = new HashSet<UnsafeReachingData> ();
 			entryInfo = new HashSet<EntryInfo> ();
 			internalMarkedTypes = new HashSet<TypeDefinition> ();
@@ -233,52 +173,52 @@ namespace Mono.Linker
 		}
 
 		public void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (method), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (method), reason.Kind));
 		}
 
 		public void RecordFieldWithReason (DependencyInfo reason, FieldDefinition field) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (field), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (field), reason.Kind));
 		}
 
 		public void RecordTypeWithReason (DependencyInfo reason, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (type), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (type), reason.Kind));
 		}
 
 		public void RecordTypeSpecWithReason (DependencyInfo reason, TypeSpecification spec) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (spec), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (spec), reason.Kind));
 		}
 		public void RecordMethodSpecWithReason (DependencyInfo reason, MethodSpecification spec) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (spec), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (spec), reason.Kind));
 		}
 
 		public void RecordFieldOnGenericInstance (DependencyInfo reason, FieldReference field) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (field), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (field), reason.Kind));
 		}
 
 		public void RecordMethodOnGenericInstance (DependencyInfo reason, MethodReference method) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (method), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (method), reason.Kind));
 		}
 
 		public void RecordCustomAttribute (DependencyInfo reason, ICustomAttribute ca) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (ca), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (ca), reason.Kind));
 		}
 
 		public void RecordPropertyWithReason (DependencyInfo reason, PropertyDefinition property) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (property), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (property), reason.Kind));
 		}
 
 		public void RecordEventWithReason (DependencyInfo reason, EventDefinition evt) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (evt), reason));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (evt), reason.Kind));
 		}
 
 		public void RecordDirectCall (MethodDefinition caller, MethodDefinition callee) {
 			// TODO: track instruction index
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (caller), GetOrCreateNode (callee), new DependencyInfo { kind = DependencyKind.DirectCall }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (caller), GetOrCreateNode (callee), DependencyKind.DirectCall));
 		}
 
 		public void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee) {
 			// TODO: track instruction index
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (caller), GetOrCreateNode (callee), new DependencyInfo { kind = DependencyKind.VirtualCall }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (caller), GetOrCreateNode (callee), DependencyKind.VirtualCall));
 		}
 
 		// read as: Record ContextSensitiveData reaches
@@ -293,27 +233,27 @@ namespace Mono.Linker
 			unsafeReachingData.Add (reachingData);
 		}
 		public void RecordAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (source), GetOrCreateNode (target), new DependencyInfo { kind = DependencyKind.MethodAccessedViaReflection }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (source), GetOrCreateNode (target), DependencyKind.MethodAccessedViaReflection));
 		}
 
 		public void RecordOverride (MethodDefinition @base, MethodDefinition @override) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (@base), GetOrCreateNode (@override), new DependencyInfo { kind = DependencyKind.Override }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (@base), GetOrCreateNode (@override), DependencyKind.Override));
 		}
 
 		// public void RecordScopeOfType (TypeDefinition type, IMetadataScope scope) {
-		// 	graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (scope), new DependencyInfo { kind = DependencyKind.ScopeOfType }));
+		// 	graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (scope), DependencyKind.ScopeOfType));
 		// }
 
 		public void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (ctor), GetOrCreateNode (type), new DependencyInfo { kind = DependencyKind.ConstructedType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ctor), GetOrCreateNode (type), DependencyKind.ConstructedType));
 		}
 
 		public void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (method), new DependencyInfo { kind = DependencyKind.OverrideOnInstantiatedType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (method), DependencyKind.OverrideOnInstantiatedType));
 		}
 
 		public void RecordInterfaceImplementation (TypeDefinition type, InterfaceImplementation iface) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (iface), new DependencyInfo { kind = DependencyKind.InterfaceImplementationOnType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (iface), DependencyKind.InterfaceImplementationOnType));
 		}
 
 		public void RecordEntryType (TypeDefinition type, EntryInfo info) {
@@ -341,42 +281,37 @@ namespace Mono.Linker
 		}
 		public void RecordEntryMethod (MethodDefinition method, EntryInfo info) {
 			var node = GetOrCreateEntryNode (method);
-			System.Diagnostics.Debug.Assert (info.entry == method);
+			System.Diagnostics.Debug.Assert (info.Entry == method);
 			graph.AddNode (node);
 			entryInfo.Add (info);
 		}
 
-		public void RecordDangerousMethod (MethodDefinition method) {
-			var node = GetOrCreateDangerousNode (method);
-			graph.AddNode (node);
-		}
-
 		public void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (declaringType), GetOrCreateNode (nestedType), new DependencyInfo { kind = DependencyKind.NestedType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (declaringType), GetOrCreateNode (nestedType), DependencyKind.NestedType));
 		}
 
 		public void RecordUserDependencyType (CustomAttribute ca, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (ca), GetOrCreateNode (type), new DependencyInfo { kind = DependencyKind.UserDependencyType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ca), GetOrCreateNode (type), DependencyKind.UserDependencyType));
 		}
 
 		public void RecordFieldAccessFromMethod (MethodDefinition method, FieldDefinition field) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (method), GetOrCreateNode (field), new DependencyInfo { kind = DependencyKind.FieldAccess }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (method), GetOrCreateNode (field), DependencyKind.FieldAccess));
 		}
 
 		public void RecordTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (method), GetOrCreateNode (cctor), new DependencyInfo { kind = DependencyKind.TriggersCctorThroughFieldAccess }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (method), GetOrCreateNode (cctor), DependencyKind.TriggersCctorThroughFieldAccess));
 		}
 
 		public void RecordTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (method), GetOrCreateNode (cctor), new DependencyInfo { kind = DependencyKind.TriggersCctorForCalledMethod }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (method), GetOrCreateNode (cctor), DependencyKind.TriggersCctorForCalledMethod));
 		}
 
 		public void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (field), GetOrCreateNode (cctor), new DependencyInfo { kind = DependencyKind.CctorForField }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (field), GetOrCreateNode (cctor), DependencyKind.CctorForField));
 		}
 
 		public void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (parent), new DependencyInfo { kind = DependencyKind.DeclaringTypeOfType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (parent), DependencyKind.DeclaringTypeOfType));
 		}
 	}
 }

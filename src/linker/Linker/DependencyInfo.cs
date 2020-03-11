@@ -29,6 +29,7 @@ namespace Mono.Linker
 
 		// why do we instantiate types?
 		InstantiatedValueType, // we mark the type instantiated because it is a value type (no source)
+		InstantiatedInterface,
 		InstantiatedFullyPreservedType, // we mark fully preserved types as instantiated (no source)
 		AlwaysInstantiatedType, // we always mark certain types as instantiated (no source)
 		MethodForInstantiatedType,
@@ -227,9 +228,15 @@ namespace Mono.Linker
 	// this attribute type gets marked whenever there are any "indirectly called" methods (UserDependency/Reflectionn/XML)
 	}
 
-	public struct DependencyInfo {
-		public DependencyKind kind;
-		public object source;
-		public int instructionIndex;
+	readonly public struct DependencyInfo : IEquatable<DependencyInfo> {
+		public DependencyKind Kind { get; }
+		public object Source { get; }
+		public bool Equals (DependencyInfo info) => (Kind, Source) == (info.Kind, info.Source);
+		public override bool Equals (Object o) => o is DependencyInfo info && this.Equals (info);
+		public override int GetHashCode() => (Kind, Source).GetHashCode ();
+		public static bool operator == (DependencyInfo lhs, DependencyInfo rhs) => lhs.Equals (rhs);
+		public static bool operator != (DependencyInfo lhs, DependencyInfo rhs) => !lhs.Equals (rhs);
+		public DependencyInfo (DependencyKind kind, object source) => (Kind, Source) = (kind, source);
+		public DependencyInfo (DependencyKind kind) => (Kind, Source) = (kind, default);
 	}
 }

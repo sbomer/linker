@@ -92,7 +92,7 @@ namespace Mono.Linker.Steps
 		public static void ProcessLibrary (LinkContext context, AssemblyDefinition assembly, RootVisibility rootVisibility = RootVisibility.Any)
 		{
 			var action = rootVisibility == RootVisibility.Any ? AssemblyAction.Copy : AssemblyAction.Link;
-			context.SetAction (assembly, action, new EntryInfo { kind = EntryKind.AssemblyAction, source = "root library", entry = assembly });
+			context.SetAction (assembly, action, new EntryInfo (EntryKind.AssemblyAction, "root library", assembly));
 
 			context.Tracer.Push (assembly);
 
@@ -151,7 +151,7 @@ namespace Mono.Linker.Steps
 				return;
 			}
 
-			context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.RootAssembly, source = type.Module.Assembly, entry = type });;
+			context.MarkingHelpers.MarkEntryType (type, new EntryInfo (EntryKind.RootAssembly, type.Module.Assembly, type));;
 			context.Annotations.Push (type);
 
 			if (type.HasFields)
@@ -169,7 +169,7 @@ namespace Mono.Linker.Steps
 		{
 			// don't track, since this doesn't actually mark types in the assembly.
 			// copy overrides this.
-			Context.SetAction (assembly, AssemblyAction.Link, new EntryInfo { kind = EntryKind.Untracked });
+			Context.SetAction (assembly, AssemblyAction.Link, new EntryInfo (EntryKind.Untracked));
 
 			Tracer.Push (assembly);
 
@@ -201,7 +201,7 @@ namespace Mono.Linker.Steps
 					_ => true
 				};
 				if (markField) {
-					context.MarkingHelpers.MarkEntryField (field, new EntryInfo { kind = EntryKind.RootAssembly, source = field.DeclaringType.Module.Assembly, entry = field });
+					context.MarkingHelpers.MarkEntryField (field, new EntryInfo (EntryKind.RootAssembly, field.DeclaringType.Module.Assembly, field));
 				}
 			}
 		}
@@ -221,7 +221,7 @@ namespace Mono.Linker.Steps
 			};
 
 			if (markMethod) {
-				context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo { kind = EntryKind.RootAssembly, source = method.Module.Assembly, entry = method });
+				context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo (EntryKind.RootAssembly, method.Module.Assembly, method));
 				context.Annotations.SetAction (method, action);
 			}
 		}

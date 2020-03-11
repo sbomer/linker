@@ -10,41 +10,36 @@ namespace Mono.Linker
 	// 	T To { get; }
 	// }
 
-	public struct Node<NodeInfo> where NodeInfo : IStartEndInfo {
-		public object Value;
-		public NodeInfo info;
-		public Node (object value, NodeInfo info = default) {
-			this.Value = value;
-			this.info = info;
-		}
+	readonly public struct Node<NodeInfo> : IEquatable<Node<NodeInfo>> where NodeInfo : IStartEndInfo, IEquatable<NodeInfo> {
+		public object Value { get; }
+		public NodeInfo Info { get; }
+		// nodes can be created specifynig an info or not, but once created
+		// no info may be added.
+		public Node (object value, in NodeInfo info) => (Value, Info) = (value, info);
+		public Node (object value) => (Value, Info) = (value, default);
 
 		// TODO: if perf is still a problem, access info directly.
-		public bool IsStart() => info.IsStart();
-		public bool IsEnd() => info.IsEnd();
+		public bool IsStart() => Info.IsStart();
+		public bool IsEnd() => Info.IsEnd();
 
-		public bool Dangerous {
-			get => info.Dangerous;
-			set => info.Dangerous = value;
-		}
-		public bool Untracked {
-			get => info.Untracked;
-			set => info.Untracked = value;
-		}
-		public bool Entry {
-			get => info.Entry;
-			set => info.Entry = value;
-		}
+		public bool Entry => Info.Entry;
+		public bool Equals (Node<NodeInfo> node) => (Value, Info).Equals((node.Value, node.Info));
+		public override bool Equals (Object o) => o is Node<NodeInfo> node && this.Equals (node);
+		public override int GetHashCode () => (Value, Info).GetHashCode ();
+		public static bool operator == (Node<NodeInfo> lhs, Node<NodeInfo> rhs) => lhs.Equals (rhs);
+		public static bool operator != (Node<NodeInfo> lhs, Node<NodeInfo> rhs) => !lhs.Equals (rhs);
 	}
 
-	public struct Edge<NodeInfo, EdgeInfo> where NodeInfo : IStartEndInfo {
-		public Node<NodeInfo> From;
-		public Node<NodeInfo> To;
-		public EdgeInfo Info;
-		public Edge (Node<NodeInfo> from, Node<NodeInfo> to, EdgeInfo info) {
-			this.From = from;
-			this.To = to;
-			this.Info = info;
-		}
+	readonly public struct Edge<NodeInfo, EdgeInfo> : IEquatable<Edge<NodeInfo, EdgeInfo>> where NodeInfo : IStartEndInfo, IEquatable<NodeInfo> { //}, IEquatable<Edge<NodeInfo, EdgeInfo>> {
+		public Node<NodeInfo> From { get; }
+		public Node<NodeInfo> To { get; }
+		public EdgeInfo Info { get; }
+		public Edge (Node<NodeInfo> from, Node<NodeInfo> to, EdgeInfo info) => (From, To, Info) = (from, to, info);
+		public bool Equals (Edge<NodeInfo, EdgeInfo> edge) => (From, To, Info).Equals((edge.From, edge.To, edge.Info));
+		public override bool Equals (Object o) => o is Edge<NodeInfo, EdgeInfo> edge && this.Equals (edge);
+		public override int GetHashCode () => (From, To, Info).GetHashCode ();
+		public static bool operator == (Edge<NodeInfo, EdgeInfo> lhs, Edge<NodeInfo, EdgeInfo> rhs) => lhs.Equals (rhs);
+		public static bool operator != (Edge<NodeInfo, EdgeInfo> lhs, Edge<NodeInfo, EdgeInfo> rhs) => !lhs.Equals (rhs);
 	}
 
 	// encapsulates a basic graph, with "Kind"s for each node and edge.
@@ -60,7 +55,7 @@ namespace Mono.Linker
 	// guessing that EdgeOfT : IEdge<T>
 	// makes it so that it doesn't optimize the property accessess into simple field accesses.
 
-	public class DependencyGraph<NodeInfo, EdgeInfo> where NodeInfo : IStartEndInfo
+	public class DependencyGraph<NodeInfo, EdgeInfo> where NodeInfo : IStartEndInfo, IEquatable<NodeInfo>
 	{
 		public readonly HashSet<Node<NodeInfo>> nodes;
 		readonly HashSet<Edge<NodeInfo, EdgeInfo>> edges;
@@ -123,9 +118,8 @@ namespace Mono.Linker
 	// this class does know about the node attribute type (maybe even the edge kind)
 	// and uses this knowledge to search the graph.
 	public interface INodeInfo {
-		bool Dangerous { get; set; }
-		bool Untracked { get; set; }
-		bool Entry { get; set; }
+		bool Dangerous { get; }
+		bool Entry { get; }
 	}
 
 	public interface IStartEndInfo : INodeInfo {
@@ -133,7 +127,7 @@ namespace Mono.Linker
 		bool IsEnd(); 
 	}
 
-	public class SearchableDependencyGraph<NodeInfo, EdgeInfo> : DependencyGraph<NodeInfo, EdgeInfo> where NodeInfo : IStartEndInfo {
+	public class SearchableDependencyGraph<NodeInfo, EdgeInfo> : DependencyGraph<NodeInfo, EdgeInfo> where NodeInfo : IStartEndInfo, IEquatable<NodeInfo> {
 
 		// This graph algorithm searches for paths that go from each startKind node
 		// to each endKind, without going through endKind.

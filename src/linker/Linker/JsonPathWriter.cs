@@ -30,14 +30,14 @@ namespace Mono.Linker
 	}
 
 	public class JsonPathWriter {
-		private readonly SearchableDependencyGraph<NodeInfo, DependencyInfo> graph;
+		private readonly SearchableDependencyGraph<NodeInfo, DependencyKind> graph;
 		// graph is used for getting thingns.
 		private readonly HashSet<UnsafeReachingData> unsafeReachingData;
 		private readonly GraphDependencyRecorder recorder;
 		// needs a dependency graph, 
 		private readonly Stream stream;
 		private readonly LinkContext context;
-		public JsonPathWriter (GraphDependencyRecorder dependencyRecorder, SearchableDependencyGraph<NodeInfo, DependencyInfo> graph, HashSet<UnsafeReachingData> unsafeReachingData, Stream stream, LinkContext context) {
+		public JsonPathWriter (GraphDependencyRecorder dependencyRecorder, SearchableDependencyGraph<NodeInfo, DependencyKind> graph, HashSet<UnsafeReachingData> unsafeReachingData, Stream stream, LinkContext context) {
 			this.unsafeReachingData = unsafeReachingData;
 			this.graph = graph;
 			this.stream = stream;
@@ -55,7 +55,7 @@ namespace Mono.Linker
 				// for these... we track separate "internal" edges (not entryedges, but similar).
 				System.Diagnostics.Debug.Assert (
 					graph.edgesTo.ContainsKey (node) ||
-					recorder.entryInfo.Any(ei => ei.entry == node.Value) ||
+					recorder.entryInfo.Any(ei => ei.Entry == node.Value) ||
 					recorder.internalMarkedTypes.Any(t => t == node.Value));
 				Console.WriteLine("node type: " + node.Value.GetType());
 				System.Diagnostics.Debug.Assert (
@@ -98,7 +98,7 @@ namespace Mono.Linker
 
 		// TODO: abstract this to not depend on node type.
 		// it goes through IsStart interface, but directly accesses value.
-		private List<string> FormatTrace (UnsafeReachingData reachingData, List<Edge<NodeInfo, DependencyInfo>> edges) {
+		private List<string> FormatTrace (UnsafeReachingData reachingData, List<Edge<NodeInfo, DependencyKind>> edges) {
 			// now, might not be an entry. could also be untracked.
 			var trace = new List<string> ();
 			var prefixes = new List<string> ();
@@ -137,7 +137,7 @@ namespace Mono.Linker
 			foreach (var edge in edges) {
 				from = edge.From;
 
-				var prefixString = edge.Info.kind switch {
+				var prefixString = edge.Info switch {
 					DependencyKind.DirectCall => "called from",
 					DependencyKind.VirtualCall => "maybe called virtually from",
 					DependencyKind.UnanalyzedReflectionCall => "not understood in call from",
@@ -147,7 +147,7 @@ namespace Mono.Linker
 					DependencyKind.OverrideOnInstantiatedType => "of instantiated type",
 					DependencyKind.MethodAccessedViaReflection => "reflected over by",
 					DependencyKind.GenericArgumentType => "generic argument of",
-					_ => $"{edge.Info.kind}",
+					_ => $"{edge.Info}",
 				};
 				prefixString += ": ";
 				prefixes.Add (prefixString);
@@ -183,9 +183,8 @@ namespace Mono.Linker
 			// if it was an entry...
 
 			if (outerNodeNode.Entry) {
-				System.Diagnostics.Debug.Assert (!outerNodeNode.Untracked);
 				// look for the entry;
-				entryInfos = recorder.entryInfo.Where (ei => ei.entry == outerNodeNode.Value);
+				entryInfos = recorder.entryInfo.Where (ei => ei.Entry == outerNodeNode.Value);
 				if (entryInfos.Count() == 0) {
 					throw new Exception("no entry info found for entry node");
 				}
@@ -195,7 +194,7 @@ namespace Mono.Linker
 
 				foreach (var entryInfo in entryInfos) {
 					// found one that's not unknown!
-					switch (entryInfo.kind) {
+					switch (entryInfo.Kind) {
 					case EntryKind.XmlDescriptor:
 						prefixes.Add ("kept from xml descriptor: ");
 						break;
@@ -213,7 +212,7 @@ namespace Mono.Linker
 
 			if (entryInfos != null && outerNodeNode.Entry) {
 				foreach (var entryInfo in entryInfos) {
-					if (entryInfo.source == null) {
+					if (entryInfo.Source == null) {
 						throw new Exception("why is source null?!");
 					}
 				}
@@ -235,11 +234,10 @@ namespace Mono.Linker
 			if (outerNodeNode.Entry) {
 				System.Diagnostics.Debug.Assert(entryInfos != null);
 				foreach (var entryInfo in entryInfos) {
-					trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], entryInfo.source.ToString ()));
+					trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], entryInfo.Source.ToString ()));
 				}
 			} else {
-				System.Diagnostics.Debug.Assert (outerNodeNode.Untracked);
-				trace.Add ("kept for untracked reason");
+				throw new Exception("untracked!?");
 			}
 
 			System.Diagnostics.Debug.Assert (prefixIndex == prefixes.Count);

@@ -54,7 +54,7 @@ namespace Mono.Linker.Steps
 			}
 
 			if (changed && (Annotations.GetAction (assembly) == AssemblyAction.Copy))
-					Annotations.SetAction (assembly, AssemblyAction.Save, new EntryInfo { kind = EntryKind.Untracked });
+				Annotations.SetAction (assembly, AssemblyAction.Save, new EntryInfo (EntryKind.Untracked));
 		}
 	}
 }
