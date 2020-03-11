@@ -17,13 +17,15 @@ namespace Mono.Linker
 		MethodAccessedViaReflection, // method -> method, assume it is called from the same method that accesses it.
 		// also used for property getters/setters whose properties are accessed via reflection
 		FieldAccessedViaReflection,
+		TypeAccessedViaReflection,
 
 		OverrideOnInstantiatedType, // type -> method
-		EntryAssembly, // assembly -> type, internal. used for 
-		// propagating an assembly action that results in keeping all types
-		// to the point where we mark the type as an entry type
-		// giving the assembly as a reason.
 		ConstructedType, // cctor method -> type
+
+		PreservedMethod, // preserved_methods in Annotations.
+			// not used for illink. but for monolinker calendarstep.
+			// can be preserved "because" of a type, or because of a method.
+			// type -> method, or method -> method
 
 		// why do we instantiate types?
 		InstantiatedValueType, // we mark the type instantiated because it is a value type (no source)
@@ -54,21 +56,31 @@ namespace Mono.Linker
 			// also for EventDataAttribute (which keeps public instance property methods)
 			// also for TypeConverterAttribute (which results in default ctor, and all methods taking one Type argument on the specified converter type being kept)
 		FieldReferencedByAttribute,
+			// non-understood DebuggerDisplayAttribute, marks all fields
+			// SoapHeaderAttribute on a method will keep a field of the declaring type
 		TypeReferencedByAttribute, // debuggertypeproxy
 		MethodKeptForNonUnderstoodAttribute, // used for DebuggerDIsplayAttribute when the linker isn't able to parse the string to determine which methods are referenced.
-		InterfaceImplementation,
-			// a type may have an interfaceimpl of another (interface) type.
+		InterfaceImplementationInterfaceType,
+			// a type may have an interfaceimpl of another (interface) type. goes from impl -> interface type
+		InterfaceImplementationOnType,
+			// from type -> impl on it
 		GenericParameterConstraintType, // when a type (or method?) generic parameter has a base type constraint,
 		// this is the "reason" that the base type of the constraint gets marked.
 		// from the generic type -> constraint type. no separate node for the parameter.
 		DefaultCtorForNewConstrainedGenericArgument, // when marking default ctors for arg types that are generic params
 		BaseDefaultCtorForStubbedMethod,
-		ParameterType, // of method
+		ParameterType, // of method, OR of fnptr
 		ParameterAttribute, // attribute on parameter of a method
 		ReturnTypeAttribute, // attribute on return type of a method
 		ReturnType, // of method
+			// OR of function pointer
 		VariableType, // of method
-		ScopeOfType, // scope of type
+		//ScopeOfType, // scope of type
+
+		ReturnTypeMarshalSpec, // method -> method return type's marshal spec.
+			// similar to ReturnTypeAttribute.
+		ParameterMarshalSpec, // same, for parameters
+		FieldMarshalSpec, // field -> its marshalspec.
 
 		MethodPreservedForType, // type -> method
 		FieldPreservedForType, // type -> field
@@ -124,6 +136,11 @@ namespace Mono.Linker
 		ElementType, // dependency from generic instance type -> generic typedef
 		ElementMethod, // dependency from generic instance method-> generic methoddef
 		FieldOnGenericInstance, // dependency from fieldref on generic instance -> field on generic typedef
+			// when marking a field on a generic instance, blame the original reason that we got to MarkField.
+			// then blame the fieldDEF on "fieldrefongenericinstance"
+		MethodOnGenericInstance, // similar to above...
+			// marking a methodref on generic instance, blame the original reason that we got to MarkMethod.
+			// then blame the methodDEF on "methodongenericinstance"
 		ModifierType, // dependency from volatile string -> system.volatile
 		// used to blame the modifier type on whatever marked the modreq(Foo) typeref.
 		//MethodParameter, // used to blame CAs on parameters on whatever marked the method
@@ -135,10 +152,9 @@ namespace Mono.Linker
 		GenericParameterCustomAttribute, // custom attribute on a generic parameter
 		GenericParameterConstraintCustomAttribute, // what it sounds like
 
-
-		// not really a mark reason...
-		ContainsDangerousCallsite, // method -> callsite. a callsite is a tuple: (caller, callee, instructionindex)
-
+		CustomAttributeField, // marking named field of a CA
+		
+		
 		// marked method on an instantiated type.
 		// at this point, we should record it.
 		// however, it's not a direct part of the callgraph.
@@ -149,6 +165,41 @@ namespace Mono.Linker
 		DeclaringTypeOfMethod, // method -> type
 		DeclaringTypeOfType, // type -> type
 		DeclaringTypeOfField, // field -> type
+
+
+		TypeInAssembly, // currently, only used when MarkEntireAssembly (for copy/save assemblies)
+		// XML marks individuals.
+		// Assembly sets assembly action, and marks types.
+		// we shouldn't try to mark entry types here.
+				// marks an entire type. assembly -> type.
+				// might rename it to AssemblyAction.
+				// means that we are marking an entire type in MarkEntireAssembly.ß
+				// only happens for copy.
+				// can we mark assemblies for -r?
+				// not same code path. it won't "root" the assembly, but only public members inside.
+				// which in reality, WILL force the assembly to be kept.
+				// maybe not if it's a type forwarder? hmm...
+				// only for copy/save assembly being marked in MarkStep.
+				// if we set the assembly action, it's set as an entry point.
+				// because some actions influence decisions later on. they cause more things to be marked.
+				// and therefore they belong in the graph.
+
+		// when we up-front mark members of an assembly, and set it to copy,
+		// then later initialize and fully mark members of such an assembly...
+		// there are two meanings to Annotations.Mark. two different states.
+		// the first meaning doesn't actually mark dependencies of the type.
+		// but that's not my problem! could fix this by separating out early marked
+		// but since they're used for same thing, track it as such.
+		// 1. member is marked as an entry.
+		//    copy assembly is also marked.
+		// 2. member is marked again...
+		//    due to another entry. most due to "copy" assembly.
+		//    after all, don't even check if was already marked.
+		EntryAssembly, // assembly -> type, internal. used for 
+		// propagating an assembly action that results in keeping all types
+		// to the point where we mark the type as an entry type
+		// giving the assembly as a reason.
+
 		Untracked, // () -> *
 		FieldType,
 		EntryMethod, // () -> method
@@ -156,6 +207,24 @@ namespace Mono.Linker
 		EntryField, // () -> field
 		NestedType, // type -> type. used for marking entire types.
 		UserDependencyType, // customattribute -> type
+		UserDependencyField, // customattribute -> field
+
+		// if a type derives from EventSource, it's an eventsource implementation.
+		// we keep all static fields on event source providers that are nested types of the implementation.
+		// providers are nested types with name "Keywords"/"Tasks"/"Opcodes"
+
+		// so nested types named "Keywords"/"Tasks"/"Opcodes" within a type derived from EventSource have static fields kept.
+		EventSourceProviderField, // from an EventSource derived type to each Keywords/Tasks/Opcodes nested class field
+
+		AttributeType, // used to mark type of a security attribute when the attribute is marked.
+		// not used for normal custom attributes, which just mark the attribute ctor (which in turn will mark the type)
+
+		LinkerInternal, // some things are not given a particular reason. they are just marked (or the conditions are not easily reported). like DisableReflectionAttribute.
+			// used for DisableReflectionAttribute, which gets marked whenever we have any indirectly called methods.
+			// TODO: handle case where there's a reason but no source.
+		DisablePrivateReflectionDependency, // something needed for the DisablePrivateReflectionAttribute.
+			// currently used for default ctor of DisablePrivateReflection attribute, when that is marked.
+	// this attribute type gets marked whenever there are any "indirectly called" methods (UserDependency/Reflectionn/XML)
 	}
 
 	public struct DependencyInfo {

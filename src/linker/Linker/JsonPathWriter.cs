@@ -49,13 +49,22 @@ namespace Mono.Linker
 		private void CheckThatEveryNodeHasAReason()
 		{
 			foreach (var node in graph.nodes) {
+				// graph may have null node value, for "NoReason" dependencies. is that ok??? NO!
 				// each node either has an edge to it, or an entryinfo recording why it was placed in the graph as an entry point
-				System.Diagnostics.Debug.Assert (graph.edgesTo.ContainsKey (node) || recorder.entryInfo.Any(ei => ei.entry == node.Value));
+				// some types are marked "linker internal".
+				// for these... we track separate "internal" edges (not entryedges, but similar).
+				System.Diagnostics.Debug.Assert (
+					graph.edgesTo.ContainsKey (node) ||
+					recorder.entryInfo.Any(ei => ei.entry == node.Value) ||
+					recorder.internalMarkedTypes.Any(t => t == node.Value));
+				Console.WriteLine("node type: " + node.Value.GetType());
 				System.Diagnostics.Debug.Assert (
 					node.Value is MethodDefinition || node.Value is FieldDefinition || node.Value is TypeDefinition ||
 					node.Value is MethodReference || node.Value is TypeReference || node.Value is FieldReference ||
 					node.Value is PropertyDefinition || node.Value is EventDefinition ||
-					node.Value is CustomAttribute
+					node.Value is CustomAttribute || node.Value is SecurityAttribute || // ICustomAttribute
+					node.Value is InterfaceImplementation ||
+					node.Value is AssemblyDefinition
 				);
 				switch (node.Value) {
 				case MethodDefinition method:
@@ -69,6 +78,13 @@ namespace Mono.Linker
 					break;
 				case CustomAttribute attribute:
 					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(attribute));
+					break;
+				case SecurityAttribute sa:
+					// System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(sa));
+					// these never get marked in Annotations.
+					break;
+				case InterfaceImplementation implementation:
+					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(implementation));
 					break;
 				case IMetadataTokenProvider tokenProvider:
 					// method/type/field ref, or property/event
@@ -150,48 +166,57 @@ namespace Mono.Linker
 			}
 
 //			var outerNode = from;
-			MemberReference outerNode;
+			object outerValue;
 			if (edges.Count > 0) {
-				outerNode = (MemberReference)from.Value;
+//				outerNode = (MemberReference)from.Value;
+				outerValue = from.Value;
 			} else {
-				outerNode = reachingData.callsite.caller;
+//				outerNode = reachingData.callsite.caller;
+				outerValue = reachingData.callsite.caller;
 			}
 
-			var outerNodeNode = recorder.GetOrCreateNode (outerNode);
+			// this is guaranteed to not create a new one, but retreive an existing one.
+			// assert this.
+			var outerNodeNode = recorder.GetOrCreateNode (outerValue);
+			IEnumerable<EntryInfo> entryInfos = null;
 			// this node was either untracked, or an entry node with a matching entryinfo.
 			// if it was an entry...
 
-			EntryInfo entryInfo;
-			entryInfo.source = null;
 			if (outerNodeNode.Entry) {
 				System.Diagnostics.Debug.Assert (!outerNodeNode.Untracked);
 				// look for the entry;
-				// why isn't there an entry?
-				var entryInfos = recorder.entryInfo.Where (ei => ei.entry == outerNodeNode.Value);
+				entryInfos = recorder.entryInfo.Where (ei => ei.entry == outerNodeNode.Value);
 				if (entryInfos.Count() == 0) {
 					throw new Exception("no entry info found for entry node");
 				}
+				if (entryInfos.Count() > 1) {
+					Console.WriteLine("multiple entry reasons...");
+				}
 
-				entryInfo = entryInfos.Single ();
-
-				// found one that's not unknown!
-				switch (entryInfo.kind) {
-				case EntryKind.XmlDescriptor:
-					prefixes.Add ("kept from xml descriptor: ");
-					break;
-				case EntryKind.RootAssembly:
-					prefixes.Add ("kept for root assembly: ");
-					break;
-				case EntryKind.AssemblyAction:
-					prefixes.Add ("kept for copy/save assembly: ");
-					break;
-				default:
-					throw new Exception("can't get here");
+				foreach (var entryInfo in entryInfos) {
+					// found one that's not unknown!
+					switch (entryInfo.kind) {
+					case EntryKind.XmlDescriptor:
+						prefixes.Add ("kept from xml descriptor: ");
+						break;
+					case EntryKind.RootAssembly:
+						prefixes.Add ("kept for root assembly: ");
+						break;
+					case EntryKind.AssemblyAction:
+						prefixes.Add ("kept for copy/save assembly: ");
+						break;
+					default:
+						throw new Exception("can't get here");
+					}
 				}
 			}
 
-			if (entryInfo.source == null && outerNodeNode.Entry) {
-				throw new Exception("why is source null!??");
+			if (entryInfos != null && outerNodeNode.Entry) {
+				foreach (var entryInfo in entryInfos) {
+					if (entryInfo.source == null) {
+						throw new Exception("why is source null?!");
+					}
+				}
 			}
 
 			var prefixLength = prefixes.Select(p => p.Length).Max();
@@ -208,7 +233,10 @@ namespace Mono.Linker
 
 			// add entry reason to the trace.
 			if (outerNodeNode.Entry) {
-				trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], entryInfo.source.ToString ()));
+				System.Diagnostics.Debug.Assert(entryInfos != null);
+				foreach (var entryInfo in entryInfos) {
+					trace.Add (String.Format ($"{{0,-{prefixLength}}}{{1}}", prefixes [prefixIndex++], entryInfo.source.ToString ()));
+				}
 			} else {
 				System.Diagnostics.Debug.Assert (outerNodeNode.Untracked);
 				trace.Add ("kept for untracked reason");

@@ -116,6 +116,34 @@ namespace Mono.Linker.Steps {
 					InitializeType (nested);
 			}
 
+			// problem is that this does full MarkType logic
+			// which can recursively mark types
+			// BEFORE we have encountered all of the "entry" types.
+			// so some of the processing is done before we've determined entries.
+			// that would be OK, if not for the fact that our graph is immutable.
+			// we could either:
+			// allow mutating the graph (dangerous!)
+			//   is it actually so bad?
+			//   Entry info isn't used until later.
+			// OR, track entry info differently somehow.
+
+			// the current algorithm will  sometimes do initialization
+			// (for example for an assembly that has been marked "copy")
+			// AFTER it has marked the type in MarkType()
+			// but never before the type has at least been early-marked in a different step.
+			// when the type is marked, we should record it.
+			// what's the reason to mark it early on?
+			// or to mark it here?
+
+			// I want multiple markings to correspond to multiple conceptual reasons.
+			// once because it's a copy assembly, once because it's a field type. fine.
+			// base reason is user input.
+			// all user input should be processed before we do recursive logic.
+			// some parts of markstep will do MarkType for things already marked in annotations,
+			// for entry user reasons.
+			// user => mark annotation
+			// mark annotation => initialize in markstep
+
 			if (Annotations.IsMarked (type))
 				MarkType (type, new DependencyInfo { kind = DependencyKind.EntryType });
 
@@ -183,11 +211,29 @@ namespace Mono.Linker.Steps {
 					// we mark it once up-front. (early marking)
 					// then we actually process it again (and mark it as well)
 
+					// I think this is a bug, similar to InitializeTypes.
+					// there might be a way to mark the method before it's initialized.
+					// then when initializing, it would already be in the graph as a non-Entry.
+					// need to make sure anything marked as an ENTRY is so before it's ever put in
+					// the dependency graph. this lets us avoid mutating things.
 					EnqueueMethod (method, new DependencyInfo { kind = DependencyKind.EntryMethod });
 				}
 		}
 
 		// this logic can run multiple times... :(
+
+		// MarkEntireType may be called AFTER MarkType has already run for a type.
+		// SO, we can't assume that marking a type here will be the first time.
+		// either:
+		// - don't mark it as an entry here, OR
+		//     cleaner and simpler if we ensure that "entry" marking happens before any recursive scanning.
+		//     can't mark "entry" in MET. must give each MET a reason.
+		//     reason can be: nested, userdep, type in assembly. done!
+		//     type in assembly: where does assembly come from? need to record it in the graph or as an entry.
+		//     MarkStep never sets action - only responds to already-set actions.
+		//     assembly action is the entry.
+		//     we will have types marked as entry AND in the graph - that is OK.
+		// - allow marking it as an entry here, even though it was already marked for another reason.
 		void MarkEntireType (TypeDefinition type, DependencyInfo reason)
 		{
 			if (type.HasNestedTypes) {
@@ -196,7 +242,8 @@ namespace Mono.Linker.Steps {
 			}
 
 			switch (reason.kind) {
-			case DependencyKind.EntryAssembly:
+			case DependencyKind.TypeInAssembly:
+				Annotations.MarkTypeWithReason (reason, type);
 				//Annotations.MarkEntryType (type);
 				// we won't get here unless a whole assembly is marked.
 				// in that case, record it as an entry
@@ -207,7 +254,8 @@ namespace Mono.Linker.Steps {
 				// _context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.Unknown, source = null, entry = type });
 				//Annotations.MarkEntryType (type);
 				// this is the one place where MarkStep creates an EntryInfo.
-				_context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.AssemblyAction, source = reason.source, entry = type });
+				// PROBLEM! by the time we get here, the type may have already been marked.
+				// _context.MarkingHelpers.MarkEntryType (type, new EntryInfo { kind = EntryKind.AssemblyAction, source = reason.source, entry = type });
 				break;
 			case DependencyKind.NestedType:
 				Annotations.MarkNestedType ((TypeDefinition)reason.source, type);
@@ -215,8 +263,6 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.UserDependencyType:
 				Annotations.MarkUserDependencyType ((CustomAttribute)reason.source, type);
 				break;
-			case DependencyKind.Untracked:
-				throw new Exception("untracked!");
 			default:
 				throw new NotImplementedException ("don't support kind " + reason.kind);
 			}
@@ -514,13 +560,13 @@ namespace Mono.Linker.Steps {
 			return type.HasInterface (@interfaceType, out InterfaceImplementation implementation) && Annotations.IsMarked (implementation);
 		}
 
-		void MarkMarshalSpec (IMarshalInfoProvider spec)
+		void MarkMarshalSpec (IMarshalInfoProvider spec, DependencyInfo reason)
 		{
 			if (!spec.HasMarshalInfo)
 				return;
 
 			if (spec.MarshalInfo is CustomMarshalInfo marshaler)
-				MarkType (marshaler.ManagedType);
+				MarkType (marshaler.ManagedType, reason);
 		}
 
 		void MarkCustomAttributes (ICustomAttributeProvider provider, DependencyInfo reason)
@@ -649,7 +695,7 @@ namespace Mono.Linker.Steps {
 			if (MarkDependencyMethod (td, member, signature, context))
 				return;
 
-			if (MarkDependencyField (td, member))
+			if (MarkDependencyField (td, member, new DependencyInfo { kind = DependencyKind.UserDependencyField, source = ca }))
 				return;
 
 			_context.LogMessage (MessageImportance.High, $"Could not resolve dependency member '{member}' declared in type '{td.FullName}'");
@@ -709,11 +755,11 @@ namespace Mono.Linker.Steps {
 			return marked;
 		}
 
-		bool MarkDependencyField (TypeDefinition type, string name)
+		bool MarkDependencyField (TypeDefinition type, string name, DependencyInfo reason)
 		{
 			foreach (var f in type.Fields) {
 				if (f.Name == name) {
-					MarkField (f);
+					MarkField (f, reason);
 					return true;
 				}
 			}
@@ -829,7 +875,7 @@ namespace Mono.Linker.Steps {
 			return true;
 		}
 
-		protected void MarkSecurityDeclarations (ISecurityDeclarationProvider provider)
+		protected void MarkSecurityDeclarations (ISecurityDeclarationProvider provider, DependencyInfo reason)
 		{
 			// most security declarations are removed (if linked) but user code might still have some
 			// and if the attributes references types then they need to be marked too
@@ -837,19 +883,22 @@ namespace Mono.Linker.Steps {
 				return;
 
 			foreach (var sd in provider.SecurityDeclarations)
-				MarkSecurityDeclaration (sd);
+				MarkSecurityDeclaration (sd, reason);
 		}
 
-		protected virtual void MarkSecurityDeclaration (SecurityDeclaration sd)
+		protected virtual void MarkSecurityDeclaration (SecurityDeclaration sd, DependencyInfo reason)
 		{
 			if (!sd.HasSecurityAttributes)
 				return;
 			
 			foreach (var sa in sd.SecurityAttributes)
-				MarkSecurityAttribute (sa);
+				MarkSecurityAttribute (sa, reason);
 		}
 
-		protected virtual void MarkSecurityAttribute (SecurityAttribute sa)
+		// TODO: security attributes can be removed by a later step.
+		// maybe that's why they don't get marked here?
+		// don't think so - RemoveSecurityStep happens before MarkStep.
+		protected virtual void MarkSecurityAttribute (SecurityAttribute sa, DependencyInfo reason)
 		{
 			TypeReference security_type = sa.AttributeType;
 			TypeDefinition type = security_type.Resolve ();
@@ -857,8 +906,24 @@ namespace Mono.Linker.Steps {
 				HandleUnresolvedType (security_type);
 				return;
 			}
-			
-			MarkType (security_type);
+
+			// the sa never acutually gets marked.
+			// unlike custom attributes. so we can't include sa in the graph, can we?
+			// maybe we just should.
+			switch (reason.kind) {
+			case DependencyKind.AssemblyOrModuleCustomAttribute:
+				// track this unmarked sa as an entry.
+				_context.MarkingHelpers.MarkEntryCustomAttribute (sa, new EntryInfo { kind = EntryKind.AssemblyOrModuleCustomAttribute, source = reason.source, entry = sa });
+				break;
+			default:
+				// otherwise, security attribute is recorded with reason (even though never marked)
+				_context.MarkingHelpers.MarkSecurityAttribute (sa, reason);
+				break;
+			}
+
+			// this will mark ca -> attribute type
+			MarkType (security_type, new DependencyInfo { kind = DependencyKind.AttributeType, source = sa });
+			// these will mark ca -> properties, ca -> fields.
 			MarkCustomAttributeProperties (sa, type);
 			MarkCustomAttributeFields (sa, type);
 		}
@@ -910,7 +975,7 @@ namespace Mono.Linker.Steps {
 		{
 			FieldDefinition field = GetField (attribute, namedArgument.Name);
 			if (field != null)
-				MarkField (field);
+				MarkField (field, new DependencyInfo { kind = DependencyKind.CustomAttributeField, source = ca });
 
 			MarkCustomAttributeArgument (namedArgument.Argument, ca);
 		}
@@ -1010,7 +1075,7 @@ namespace Mono.Linker.Steps {
 
 			MarkAssemblyCustomAttributes (assembly);
 
-			MarkSecurityDeclarations (assembly);
+			MarkSecurityDeclarations (assembly, new DependencyInfo { kind = DependencyKind.AssemblyOrModuleCustomAttribute, source = assembly });
 
 			foreach (ModuleDefinition module in assembly.Modules)
 				LazyMarkCustomAttributes (module, module);
@@ -1031,8 +1096,12 @@ namespace Mono.Linker.Steps {
 				// TODO: This needs more work accross all steps
 			}
 
-			foreach (TypeDefinition type in assembly.MainModule.Types)
-				MarkEntireType (type, new DependencyInfo { kind = DependencyKind.EntryAssembly, source = assembly });
+			// now that assemblies are in the graph, need to mark entry assemblies.
+			foreach (TypeDefinition type in assembly.MainModule.Types) {
+				MarkEntireType (type, new DependencyInfo { kind = DependencyKind.TypeInAssembly, source = assembly });
+			}
+			// PROBLEM! by the time we get here, the type might already have been marked for another reason.
+			// mark it instead as a dependency of the assembly.
 		}
 
 		void ProcessModule (AssemblyDefinition assembly)
@@ -1043,7 +1112,7 @@ namespace Mono.Linker.Steps {
 			{
 				if (type.Name == "<Module>" && type.HasMethods)
 				{
-					MarkType (type);
+					MarkType (type, new DependencyInfo { kind = DependencyKind.TypeInAssembly, source = assembly });
 					break;
 				}
 			}
@@ -1196,11 +1265,6 @@ namespace Mono.Linker.Steps {
 		// they can additionally have logic that is only ever done once per method.
 		// which is Process*.
 
-		void MarkField (FieldDefinition field)
-		{
-			MarkField (field, new DependencyInfo { kind = DependencyKind.Untracked });
-		}
-
 		void MarkField (FieldDefinition field, DependencyInfo reason)
 		{
 			if (CheckProcessed (field))
@@ -1209,7 +1273,7 @@ namespace Mono.Linker.Steps {
 			MarkType (field.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfField, source = field});
 			MarkType (field.FieldType, new DependencyInfo { kind = DependencyKind.FieldType, source = field });
 			MarkCustomAttributes (field, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = field });
-			MarkMarshalSpec (field);
+			MarkMarshalSpec (field, new DependencyInfo { kind = DependencyKind.FieldMarshalSpec, source = field });
 			DoAdditionalFieldProcessing (field);
 
 			var parent = field.DeclaringType;
@@ -1219,12 +1283,6 @@ namespace Mono.Linker.Steps {
 					var methodAccessingField = reason.source;
 					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.TriggersCctorThroughFieldAccess, source = methodAccessingField });
 					break;
-				case DependencyKind.Untracked:
-					// if we are marking the field for an untracked reason,
-					// still mark the cctor to preserve existing behavior.
-					// but don't record an actual method triggering the cctor
-					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.Untracked });
-					break;
 				case DependencyKind.EntryField:
 				case DependencyKind.FieldForType:
 				case DependencyKind.FieldPreservedForType:
@@ -1232,6 +1290,7 @@ namespace Mono.Linker.Steps {
 				case DependencyKind.FieldReferencedByAttribute:
 				case DependencyKind.Ldtoken:
 				case DependencyKind.FieldOnGenericInstance:
+				case DependencyKind.EventSourceProviderField:
 					// generic: mark cctor for this field if we don't have a better reason.
 					MarkStaticConstructor (parent, new DependencyInfo { kind = DependencyKind.CctorForField, source = field });
 					break;
@@ -1250,15 +1309,13 @@ namespace Mono.Linker.Steps {
 				// let's record it for now, but not sure how to report it.
 				Annotations.MarkFieldAccessFromMethod ((MethodDefinition)reason.source, field);
 				break;
-			case DependencyKind.Untracked:
-				Annotations.MarkFieldUntracked (field);
-				break;
 			case DependencyKind.FieldForType:
 			case DependencyKind.FieldPreservedForType:
 			case DependencyKind.InteropMethodDependency:
 			case DependencyKind.FieldReferencedByAttribute:
 			case DependencyKind.Ldtoken:
 			case DependencyKind.FieldOnGenericInstance:
+			case DependencyKind.EventSourceProviderField:
 				Annotations.MarkFieldWithReason (reason, field);
 				break;
 			case DependencyKind.EntryField:
@@ -1290,12 +1347,6 @@ namespace Mono.Linker.Steps {
 			if (!_context.IsFeatureExcluded ("deserialization"))
 				MarkMethodsIf (type.Methods, IsSpecialSerializationConstructor, new DependencyInfo { kind = DependencyKind.SerializationMethodForType, source = type });
 		}
-
-		protected virtual TypeDefinition MarkType (TypeReference reference)
-		{
-			return MarkType (reference, new DependencyInfo { kind = DependencyKind.Untracked });
-		}
-
 		protected virtual TypeDefinition MarkType (TypeReference reference, DependencyInfo reason)
 		{
 			if (reference == null)
@@ -1322,8 +1373,6 @@ namespace Mono.Linker.Steps {
 			}
 
 			switch (reason.kind) {
-			case DependencyKind.Untracked:
-				throw new Exception("UNTRACKED TYPE!");
 			case DependencyKind.EntryType:
 				// we don't report a specific reason for an entry type.
 				// can get here for INitializeAssembly,
@@ -1340,7 +1389,7 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.FieldType:
 			case DependencyKind.GenericArgumentType: // generic instantiation typeref -> argument type
 			case DependencyKind.DeclaringTypeOfMethod:
-			case DependencyKind.InterfaceImplementation:
+			case DependencyKind.InterfaceImplementationInterfaceType:
 			case DependencyKind.GenericParameterConstraintType:
 			case DependencyKind.TypeReferencedByAttribute:
 			case DependencyKind.ParameterType:
@@ -1356,7 +1405,12 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.DeclaringTypeOfCalledMethod:
 			case DependencyKind.ElementType: // instantiation -> resolved type
 			case DependencyKind.ModifierType: // volatile string -> system.volatile
+			case DependencyKind.AttributeType:
+			case DependencyKind.TypeAccessedViaReflection:
 				Annotations.MarkTypeWithReason (reason, type);
+				break;
+			case DependencyKind.LinkerInternal:
+				Annotations.MarkTypeLinkerInternal (type);
 				break;
 			// since we can get here for generic arguments of methods, all
 			// the "method" dependencies need to be supported as well.
@@ -1364,7 +1418,6 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.VirtualCall:
 			case DependencyKind.Ldftn:
 				throw new Exception("shouldn't blame a typedef of generic method arg on the method's caller, but on generic method itself!");
-				break;
 			default:
 				throw new NotImplementedException(reason.kind.ToString());
 			}
@@ -1375,10 +1428,13 @@ namespace Mono.Linker.Steps {
 					case DependencyKind.DeclaringTypeOfCalledMethod:
 						MarkStaticConstructor (type, new DependencyInfo { kind = DependencyKind.TriggersCctorForCalledMethod, source = reason.source });
 						break;
+					case DependencyKind.BaseType:
+					case DependencyKind.DeclaringTypeOfField:
+					case DependencyKind.DeclaringTypeOfType:
+					case DependencyKind.FieldType:
 					case DependencyKind.GenericArgumentType:
 					case DependencyKind.DeclaringTypeOfMethod:
-					case DependencyKind.DeclaringTypeOfField:
-					case DependencyKind.InterfaceImplementation:
+					case DependencyKind.InterfaceImplementationInterfaceType:
 					case DependencyKind.GenericParameterConstraintType:
 					case DependencyKind.TypeReferencedByAttribute:
 					case DependencyKind.ParameterType:
@@ -1391,9 +1447,13 @@ namespace Mono.Linker.Steps {
 					case DependencyKind.CustomAttributeArgumentType:
 					case DependencyKind.CustomAttributeArgumentValue:
 					case DependencyKind.UnreachableBodyRequirement:
-					case DependencyKind.FieldType:
+					// DeclaringTypeOfCalledMethod?
+					// ElementType?
+					// ModifierType?
 					case DependencyKind.EntryType:
 					case DependencyKind.ElementType:
+					case DependencyKind.AttributeType:
+					case DependencyKind.TypeAccessedViaReflection:
 						// for entrytype, we don't have a reason the type is kept, beyond the user said so.
 						// maybe EntryType can be an intermediate reason that a method is kept.
 						// we can track an entry kind that is:
@@ -1413,8 +1473,8 @@ namespace Mono.Linker.Steps {
 						// but for now, we still mark it. just consider it an untracked cctor in that case.
 						// meaning it has an untracked reason for inclusion, possibly in addition to a real reason.
 						// so it's not really untracked, but for a non-understood reason.
-						MarkStaticConstructor (type, new DependencyInfo { kind = DependencyKind.Untracked });
-						break;
+						throw new NotImplementedException(reason.kind.ToString());
+
 					}
 				}
 			}
@@ -1428,7 +1488,7 @@ namespace Mono.Linker.Steps {
 			MarkType (type.BaseType, new DependencyInfo { kind = DependencyKind.BaseType, source = type });
 			MarkType (type.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfType, source = type });
 			MarkCustomAttributes (type, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = type });
-			MarkSecurityDeclarations (type);
+			MarkSecurityDeclarations (type, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = type });
 
 			if (type.IsMulticastDelegate ()) {
 				MarkMulticastDelegate (type);
@@ -1437,6 +1497,11 @@ namespace Mono.Linker.Steps {
 			if (type.IsSerializable ())
 				MarkSerializable (type);
 
+			// this has *some* logic for EventSource... but I think it's incomplete.
+			// it marks all static fields of Keywords/OpCodes/Tasks subclasses of an EventSource-derived type.
+			// don't we also need to keep the EventSource attribute (which gives the source name?)
+			// other logic keeps public&instance&property methods on types with EventDataAttribute.
+			// I don't think this is enough.
 			if (!_context.IsFeatureExcluded ("etw") && BCL.EventTracingForWindows.IsEventSourceImplementation (type, _context)) {
 				MarkEventSourceProviders (type);
 			}
@@ -1631,7 +1696,7 @@ namespace Mono.Linker.Steps {
 		void MarkXmlSchemaProvider (TypeDefinition type, CustomAttribute attribute)
 		{
 			if (TryGetStringArgument (attribute, out string name))
-				MarkNamedMethod (type, name);
+				MarkNamedMethod (type, name, new DependencyInfo { kind = DependencyKind.MethodReferencedByAttribute, source = attribute });
 		}
 
 		protected virtual void MarkTypeConverterLikeDependency (CustomAttribute attribute, Func<MethodDefinition, bool> predicate)
@@ -1736,7 +1801,7 @@ namespace Mono.Linker.Steps {
 				TypeDefinition proxyType = proxyTypeReference.Resolve ();
 				if (proxyType != null) {
 					MarkMethods (proxyType, new DependencyInfo { kind = DependencyKind.MethodReferencedByAttribute, source = attribute });
-					MarkFields (proxyType, includeStatic: true);
+					MarkFields (proxyType, includeStatic: true, new DependencyInfo { kind = DependencyKind.FieldReferencedByAttribute, source = attribute });
 				}
 			}
 		}
@@ -1753,7 +1818,7 @@ namespace Mono.Linker.Steps {
 			return argument != null;
 		}
 
-		protected int MarkNamedMethod (TypeDefinition type, string method_name)
+		protected int MarkNamedMethod (TypeDefinition type, string method_name, DependencyInfo reason)
 		{
 			if (!type.HasMethods)
 				return 0;
@@ -1763,7 +1828,7 @@ namespace Mono.Linker.Steps {
 				if (method.Name != method_name)
 					continue;
 
-				MarkMethod (method);
+				MarkMethod (method, reason);
 				count++;
 			}
 
@@ -1775,11 +1840,12 @@ namespace Mono.Linker.Steps {
 			if (!TryGetStringArgument (attribute, out string member_name))
 				return;
 
-			MarkNamedField (method.DeclaringType, member_name);
-			MarkNamedProperty (method.DeclaringType, member_name);
+			MarkNamedField (method.DeclaringType, member_name, new DependencyInfo { kind = DependencyKind.FieldReferencedByAttribute, source = attribute });
+			MarkNamedProperty (method.DeclaringType, member_name, new DependencyInfo { kind = DependencyKind.MethodReferencedByAttribute, source = attribute });
 		}
 
-		void MarkNamedField (TypeDefinition type, string field_name)
+		// TODO: combine with MarkDependencyField.
+		void MarkNamedField (TypeDefinition type, string field_name, DependencyInfo reason)
 		{
 			if (!type.HasFields)
 				return;
@@ -1788,11 +1854,11 @@ namespace Mono.Linker.Steps {
 				if (field.Name != field_name)
 					continue;
 
-				MarkField (field);
+				MarkField (field, reason);
 			}
 		}
 
-		void MarkNamedProperty (TypeDefinition type, string property_name)
+		void MarkNamedProperty (TypeDefinition type, string property_name, DependencyInfo reason)
 		{
 			if (!type.HasProperties)
 				return;
@@ -1802,8 +1868,8 @@ namespace Mono.Linker.Steps {
 					continue;
 
 				Tracer.Push (property);
-				MarkMethod (property.GetMethod);
-				MarkMethod (property.SetMethod);
+				MarkMethod (property.GetMethod, reason);
+				MarkMethod (property.SetMethod, reason);
 				Tracer.Pop ();
 			}
 		}
@@ -1928,21 +1994,11 @@ namespace Mono.Linker.Steps {
 				parameters [1].ParameterType.Name == "StreamingContext";
 		}
 
-		protected void MarkMethodsIf (Collection<MethodDefinition> methods, Func<MethodDefinition, bool> predicate)
-		{
-			MarkMethodsIf (methods, predicate, new DependencyInfo { kind = DependencyKind.Untracked });
-		}
-
 		protected void MarkMethodsIf (Collection<MethodDefinition> methods, Func<MethodDefinition, bool> predicate, DependencyInfo reason)
 		{
 			foreach (MethodDefinition method in methods)
 				if (predicate (method))
 					MarkMethod (method, reason);
-		}
-
-		protected MethodDefinition MarkMethodIf (Collection<MethodDefinition> methods, Func<MethodDefinition, bool> predicate)
-		{
-			return MarkMethodIf (methods, predicate, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
 		protected MethodDefinition MarkMethodIf (Collection<MethodDefinition> methods, Func<MethodDefinition, bool> predicate, DependencyInfo reason)
@@ -1954,11 +2010,6 @@ namespace Mono.Linker.Steps {
 			}
 
 			return null;
-		}
-
-		protected bool MarkDefaultConstructor (TypeDefinition type)
-		{
-			return MarkDefaultConstructor (type, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
 		protected bool MarkDefaultConstructor (TypeDefinition type, DependencyInfo reason)
@@ -2037,9 +2088,12 @@ namespace Mono.Linker.Steps {
 
 		void MarkEventSourceProviders (TypeDefinition td)
 		{
+			// marks all static fields of a nestedtype in an EventSource-derived type,
+			// that is called
+			// "Keywords", "Tasks", or "Opcodes";
 			foreach (var nestedType in td.NestedTypes) {
 				if (BCL.EventTracingForWindows.IsProviderName (nestedType.Name))
-					MarkStaticFields (nestedType);
+					MarkStaticFields (nestedType, new DependencyInfo { kind = DependencyKind.EventSourceProviderField, source = td });
 			}
 		}
 
@@ -2071,6 +2125,7 @@ namespace Mono.Linker.Steps {
 		{
 			// why is this a while loop?
 			while (type is TypeSpecification specification) {
+				_context.MarkingHelpers.MarkTypeSpec (specification, reason);
 				if (type is GenericInstanceType git) {
 					// record an edge from whatever got here to the typeref. then this call will do from ref -> argument.
 					MarkGenericArguments (git);
@@ -2086,9 +2141,11 @@ namespace Mono.Linker.Steps {
 					MarkModifierType (mod);
 				}
 
+
+				// something needs to mark the fnptr.
 				if (type is FunctionPointerType fnptr) {
 					MarkParameters (fnptr);
-					MarkType (fnptr.ReturnType);
+					MarkType (fnptr.ReturnType, new DependencyInfo { kind = DependencyKind.ReturnType, source = fnptr });
 					break; // FunctionPointerType is the original type
 				}
 
@@ -2101,7 +2158,6 @@ namespace Mono.Linker.Steps {
 				// and from the typespec to the element type.
 				// the element type will be marked in MarkType, so just pass along a new reason.
 				// the originator -> typespec must be handled here.
-				_context.MarkingHelpers.MarkTypeSpec (specification, reason);
 				(type, reason) = (specification.ElementType, new DependencyInfo { kind = DependencyKind.ElementType, source = specification });
 			}
 
@@ -2115,7 +2171,7 @@ namespace Mono.Linker.Steps {
 
 			for (int i = 0; i < fnptr.Parameters.Count; i++)
 			{
-				MarkType (fnptr.Parameters[i].ParameterType);
+				MarkType (fnptr.Parameters[i].ParameterType, new DependencyInfo { kind = DependencyKind.ParameterType, source = fnptr });
 			}
 		}
 
@@ -2171,7 +2227,7 @@ namespace Mono.Linker.Steps {
 
 				var argument_definition = argument.Resolve ();
 				// this will have kind generic argument constructor
-				MarkDefaultConstructor (argument_definition, new DependencyInfo { kind = DependencyKind.DefaultCtorForNewConstrainedGenericArgument,, source = instance });
+				MarkDefaultConstructor (argument_definition, new DependencyInfo { kind = DependencyKind.DefaultCtorForNewConstrainedGenericArgument, source = instance });
 			}
 		}
 
@@ -2207,7 +2263,7 @@ namespace Mono.Linker.Steps {
 					_context.LogMessage ($"Type {type.FullName} has no fields to preserve");
 				break;
 			case TypePreserve.Methods:
-				if (!MarkMethods (type))
+				if (!MarkMethods (type, new DependencyInfo { kind = DependencyKind.MethodPreservedForType, source = type}))
 					_context.LogMessage ($"Type {type.FullName} has no methods to preserve");
 				break;
 			}
@@ -2219,7 +2275,8 @@ namespace Mono.Linker.Steps {
 			if (list == null)
 				return;
 
-			MarkMethodCollection (list);
+			// this doesn't happen. but if it does, just note that this was preserved for "type".
+			MarkMethodCollection (list, new DependencyInfo { kind = DependencyKind.PreservedMethod, source = type });
 		}
 
 		void ApplyPreserveMethods (MethodDefinition method)
@@ -2228,12 +2285,8 @@ namespace Mono.Linker.Steps {
 			if (list == null)
 				return;
 
-			MarkMethodCollection (list);
-		}
-
-		protected bool MarkFields (TypeDefinition type, bool includeStatic, bool markBackingFieldsOnlyIfPropertyMarked = false)
-		{
-			return MarkFields (type, includeStatic, new DependencyInfo { kind = DependencyKind.Untracked }, markBackingFieldsOnlyIfPropertyMarked);
+			// this simply doesn't happen. what to do here?
+			MarkMethodCollection (list, new DependencyInfo { kind = DependencyKind.PreservedMethod, source = method });
 		}
 
 		// if is enum, we include static fields of value type.
@@ -2280,20 +2333,16 @@ namespace Mono.Linker.Steps {
 			return null;
 		}
 
-		protected void MarkStaticFields (TypeDefinition type)
+		protected void MarkStaticFields (TypeDefinition type, DependencyInfo reason)
 		{
 			if (!type.HasFields)
 				return;
 
+			// used to mark all static fields of a type who
 			foreach (FieldDefinition field in type.Fields) {
 				if (field.IsStatic)
-					MarkField (field);
+					MarkField (field, reason);
 			}
-		}
-
-		protected virtual bool MarkMethods (TypeDefinition type)
-		{
-			return MarkMethods (type, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
 		protected virtual bool MarkMethods (TypeDefinition type, DependencyInfo reason)
@@ -2303,11 +2352,6 @@ namespace Mono.Linker.Steps {
 
 			MarkMethodCollection (type.Methods, reason);
 			return true;
-		}
-
-		void MarkMethodCollection (IList<MethodDefinition> methods)
-		{
-			MarkMethodCollection (methods, new DependencyInfo { kind = DependencyKind.Untracked });
 		}
 
 		void MarkMethodCollection (IList<MethodDefinition> methods, DependencyInfo reason)
@@ -2322,21 +2366,29 @@ namespace Mono.Linker.Steps {
 			Annotations.MarkIndirectlyCalledMethod (method);
 		}
 
-		private MethodDefinition MarkMethod (MethodReference reference)
-		{
-			return MarkMethod (reference, new DependencyInfo { kind = DependencyKind.Untracked });
-		}
-
 		protected virtual MethodDefinition MarkMethod (MethodReference reference, DependencyInfo reason)
 		{
+			if (reference.ToString().Contains("Testgenerics")) {
+				Console.WriteLine("here");
+			}
+			if (reference.ToString() == "System.Void rr.GenericClass`1<rr.GenericArg>::.ctor()") {
+				Console.WriteLine("hmm");
+			}
+
+			// if it's a generic method, this will mark generic arguments, and the method reference.
+			// the reference will go to the ElementType, which I think is the method on the type, without the
+			// method generic argument.
+			// the reason becomes a ElementMethod dependency from the original reference to the element type
+			// (which is the uninstantiated generic methodref, still possibly on a genericinst type).
 			(reference, reason) = GetOriginalMethod (reference, reason);
+
+			// but the method could still be on a generic type.
 
 			if (reference.DeclaringType is ArrayType)
 				return null;
 
 			Tracer.Push (reference);
 
-			MethodDefinition method = reference.Resolve ();
 			if (reference.DeclaringType is GenericInstanceType) {
 				// for a generic instance, the reference to the instantiation doesn't exist
 				// as a definition. there's nothing to mark.
@@ -2352,16 +2404,22 @@ namespace Mono.Linker.Steps {
 				// if we can't resolve the original method,
 				// then there's no reason to blame it.
 				// same as field logic.
-				if (method != null) {
-					MarkType (reference.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfMethod, source = method });
-				} else {
-					MarkType (reference.DeclaringType); // untracked reason.
-					// shouldn't be common.
-				}
 
-				// TODO: avoid marking GenericInstanceType!
+				// if it's a methodref on a generic instance type, we mark the declaring type (a reference) as this methodref's
+				// declaring type.
+				// but that puts the methodref in the graph, no?
 
+				// need to make sure the reference has a reason to be in the graph, even though it's not actually marked.
+				_context.MarkingHelpers.MarkMethodOnGenericInstance (reference, reason);
+				// this will put the methodref in the graph, as a source.
+				// but it will never be there with a reason.
+				MarkType (reference.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfMethod, source = reference });
+				// want to mark the resolved method definition as a dependency of the reference.
+				reason = new DependencyInfo { kind = DependencyKind.MethodOnGenericInstance, source = reference };
 			}
+
+			MethodDefinition method = reference.Resolve ();
+			// ... wait, what if it's a methodimpl? does this include generic method parameters?
 
 //			if (IgnoreScope (reference.DeclaringType.Scope))
 //				return;
@@ -2419,6 +2477,10 @@ namespace Mono.Linker.Steps {
 		{
 			// note the method call, even if we have already processed it.
 
+			if (method.ToString().Contains("Testgenerics")) {
+				Console.WriteLine("here");
+			}
+
 			// problem:
 			// some logic (what to mark it for, incoming edge) must be done for every caller.
 			// some must run only once per definition.
@@ -2445,9 +2507,6 @@ namespace Mono.Linker.Steps {
 				break;
 			case DependencyKind.CctorForField:
 				Annotations.MarkStaticConstructorForField ((FieldDefinition)reason.source, method);
-				break;
-			case DependencyKind.Untracked:
-				Annotations.MarkMethodUntracked (method);
 				break;
 			case DependencyKind.EntryMethod:
 				// don't track an entry reason. if we got here, there is already an entry reason.
@@ -2491,6 +2550,8 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.MethodForType:
 			case DependencyKind.ElementMethod:
 			case DependencyKind.EventMethod:
+			case DependencyKind.DefaultCtorForNewConstrainedGenericArgument:
+			case DependencyKind.MethodOnGenericInstance: // marks the methoddef, blaming a methodref on a generic instance
 				Annotations.MarkMethodWithReason (reason, method);
 				break;
 			default:
@@ -2508,7 +2569,6 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.TriggersCctorForCalledMethod:
 			case DependencyKind.Override:
 			case DependencyKind.OverrideOnInstantiatedType: // in this case, the declaring type would already have been marked anyway.
-			case DependencyKind.Untracked:
 			case DependencyKind.MethodAccessedViaReflection: // this should behave similarly to the declaringtypeofcalledmethod which may trigger a cctor.
 			case DependencyKind.EntryMethod:
 			case DependencyKind.SerializationMethodForType:
@@ -2536,6 +2596,8 @@ namespace Mono.Linker.Steps {
 			case DependencyKind.MethodForType:
 			case DependencyKind.ElementMethod:
 			case DependencyKind.EventMethod:
+			case DependencyKind.DefaultCtorForNewConstrainedGenericArgument:
+			case DependencyKind.MethodOnGenericInstance:
 				MarkType (method.DeclaringType, new DependencyInfo { kind = DependencyKind.DeclaringTypeOfMethod, source = method });
 				break;
 			default:
@@ -2554,7 +2616,7 @@ namespace Mono.Linker.Steps {
 			// then we might not get here because of the CheckProcessed check.
 
 			MarkCustomAttributes (method, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = method });
-			MarkSecurityDeclarations (method);
+			MarkSecurityDeclarations (method, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = method });
 
 			MarkGenericParameterProvider (method);
 
@@ -2574,7 +2636,7 @@ namespace Mono.Linker.Steps {
 					MarkType (pd.ParameterType, new DependencyInfo { kind = DependencyKind.ParameterType, source = method });
 					// blame the same reason that the method was marked.
 					MarkCustomAttributes (pd, new DependencyInfo { kind = DependencyKind.ParameterAttribute, source = method });
-					MarkMarshalSpec (pd);
+					MarkMarshalSpec (pd, new DependencyInfo { kind = DependencyKind.ParameterMarshalSpec, source = method });
 				}
 			}
 
@@ -2596,7 +2658,7 @@ namespace Mono.Linker.Steps {
 
 			MarkType (method.ReturnType, new DependencyInfo { kind = DependencyKind.ReturnType, source = method });
 			MarkCustomAttributes (method.MethodReturnType, new DependencyInfo { kind = DependencyKind.ReturnTypeAttribute, source = method });
-			MarkMarshalSpec (method.MethodReturnType);
+			MarkMarshalSpec (method.MethodReturnType, new DependencyInfo { kind = DependencyKind.ReturnTypeMarshalSpec, source = method });
 
 			if (method.IsPInvokeImpl || method.IsInternalCall) {
 				ProcessInteropMethod (method);
@@ -2625,7 +2687,6 @@ namespace Mono.Linker.Steps {
 			// case DependencyKind.NewObj:
 			// 	Annotations.MarkInstantiatedByCalledConstructor ((MethodDefinition)reason.source, type);
 			// 	break;
-			// case DependencyKind.Untracked:
 			// 	Annotations.MarkInstantiatedUntracked (type);
 			// 	break;
 			// default:
@@ -2730,7 +2791,7 @@ namespace Mono.Linker.Steps {
 
 				var baseType = method.DeclaringType.BaseType.Resolve ();
 				// what if this is generic???
-				if (!MarkDefaultConstructor (baseType, new DependencyInfo { kind = DependencyKind.BaseDefaultCtorForStubbedMethod, source = mehod });
+				if (!MarkDefaultConstructor (baseType, new DependencyInfo { kind = DependencyKind.BaseDefaultCtorForStubbedMethod, source = method }))
 					throw new NotSupportedException ($"Cannot stub constructor on '{method.DeclaringType}' when base type does not have default constructor");
 
 				break;
@@ -2770,14 +2831,14 @@ namespace Mono.Linker.Steps {
 			if (_context.MarkedKnownMembers.DisablePrivateReflectionAttributeCtor != null)
 				return false;
 
-			var nse = BCL.FindPredefinedType ("System.Runtime.CompilerServices", "DisablePrivateReflectionAttribute", _context);
-			if (nse == null)
+			var disablePrivateReflection = BCL.FindPredefinedType ("System.Runtime.CompilerServices", "DisablePrivateReflectionAttribute", _context);
+			if (disablePrivateReflection == null)
 				throw new NotSupportedException ("Missing predefined 'System.Runtime.CompilerServices.DisablePrivateReflectionAttribute' type");
 
-			MarkType (nse);
+			MarkType (disablePrivateReflection, new DependencyInfo { kind = DependencyKind.LinkerInternal });
 
-			var ctor = MarkMethodIf (nse.Methods, MethodDefinitionExtensions.IsDefaultConstructor);
-			_context.MarkedKnownMembers.DisablePrivateReflectionAttributeCtor = ctor ?? throw new MarkException ($"Could not find constructor on '{nse.FullName}'");
+			var ctor = MarkMethodIf (disablePrivateReflection.Methods, MethodDefinitionExtensions.IsDefaultConstructor, new DependencyInfo { kind = DependencyKind.DisablePrivateReflectionDependency, source = disablePrivateReflection });
+			_context.MarkedKnownMembers.DisablePrivateReflectionAttributeCtor = ctor ?? throw new MarkException ($"Could not find constructor on '{disablePrivateReflection.FullName}'");
 			return true;
 		}
 
@@ -2901,6 +2962,7 @@ namespace Mono.Linker.Steps {
 			foreach (Instruction instruction in body.Instructions)
 				MarkInstruction (instruction, body.Method);
 
+			// interfaces needed by body stack
 			MarkInterfacesNeededByBodyStack (body);
 
 			MarkReflectionLikeDependencies (body);
@@ -2927,6 +2989,7 @@ namespace Mono.Linker.Steps {
 			if (implementations == null)
 				return;
 
+			// this may not 
 			foreach (var (implementation, type) in implementations)
 				MarkInterfaceImplementation (implementation, type);
 		}
@@ -2956,8 +3019,7 @@ namespace Mono.Linker.Steps {
 					reason = new DependencyInfo { kind = DependencyKind.Ldftn, source = method };
 					break;
 				default:
-					reason = new DependencyInfo { kind = DependencyKind.Untracked, source = null };
-					break;
+					throw new Exception("what instruction is this?!");
 				}
 				MarkMethod ((MethodReference) instruction.Operand, reason);
 				break;
@@ -3030,9 +3092,13 @@ namespace Mono.Linker.Steps {
 
 		protected virtual void MarkInterfaceImplementation (InterfaceImplementation iface, TypeDefinition type)
 		{
+			// can get here from looking at interface impls on a type,
+			// from looking at explicit overrides (methodimpls) on a method (signifying an interface implementation)
+			// or even from a method body (where we mark interface implementations needed by the body stack)
 			MarkCustomAttributes (iface, new DependencyInfo { kind = DependencyKind.CustomAttribute, source = iface });
-			MarkType (iface.InterfaceType, new DependencyInfo { kind = DependencyKind.InterfaceImplementation, source = type });
-			Annotations.Mark (iface); // TODO: this can be its own node!! need to track dependency from type & interface -> ifaciimpl
+			MarkType (iface.InterfaceType, new DependencyInfo { kind = DependencyKind.InterfaceImplementationInterfaceType, source = iface });
+			// Annotations.Mark (iface); // TODO: this can be its own node!! need to track dependency from type & interface -> ifaciimpl
+			Annotations.MarkInterfaceImplementation (iface, type);
 		}
 
 		bool HasManuallyTrackedDependency (MethodBody methodBody)
@@ -3354,7 +3420,8 @@ namespace Mono.Linker.Steps {
 										break;
 									}
 
-									reflectionContext.RecordRecognizedPattern (foundType, () => _markStep.MarkType (foundType));
+									var methodCalling = reflectionContext.MethodCalling;
+									reflectionContext.RecordRecognizedPattern (foundType, () => _markStep.MarkType (foundType, new DependencyInfo { kind = DependencyKind.TypeAccessedViaReflection, source = methodCalling }));
 								}
 								break;
 						}

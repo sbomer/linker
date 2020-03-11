@@ -114,8 +114,11 @@ namespace Mono.Linker {
 			return MethodAction.Nothing;
 		}
 
-		public void SetAction (AssemblyDefinition assembly, AssemblyAction action)
+		public void SetAction (AssemblyDefinition assembly, AssemblyAction action, EntryInfo info)
 		{
+			// TODO: assert that action doesn't decrease.
+			// extra entry info is ok, as long as we don't have an assembly in the graph with NO entry info.
+			rule_dependency_recorder.RecordEntryAssembly (assembly, info);
 			assembly_actions [assembly] = action;
 		}
 
@@ -126,6 +129,7 @@ namespace Mono.Linker {
 
 		public void SetAction (MethodDefinition method, MethodAction action)
 		{
+			// TODO: assert that action doesn't decrease.
 			method_actions [method] = action;
 		}
 
@@ -528,6 +532,12 @@ namespace Mono.Linker {
 			Mark (type);
 		}
 
+		public void MarkTypeLinkerInternal (TypeDefinition type)
+		{
+			rule_dependency_recorder.RecordTypeLinkerInternal (type);
+			Mark (type);
+		}
+
 		// every call to Annotations.Mark should ultimately go through one of these helpers,
 		// each of which tracks a "reason" that the item was marked.
 
@@ -648,6 +658,12 @@ namespace Mono.Linker {
 
 		}
 
+		public void MarkInterfaceImplementation (InterfaceImplementation iface, TypeDefinition type)
+		{
+			Mark (iface);
+			rule_dependency_recorder.RecordInterfaceImplementation (type, iface);
+		}
+
 		public void MarkMethodOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method)
 		{
 			context.Annotations.Mark (method);
@@ -664,27 +680,6 @@ namespace Mono.Linker {
 		{
 			context.Annotations.Mark (field);
 			rule_dependency_recorder.RecordFieldAccessFromMethod (method, field);
-		}
-
-
-		public void MarkFieldUntracked (FieldDefinition field)
-		{
-			context.Annotations.Mark (field);
-			rule_dependency_recorder.RecordFieldUntracked (field);
-		}
-
-		public void MarkTypeUntracked (TypeDefinition type)
-		{
-			context.Annotations.Mark (type);
-			rule_dependency_recorder.RecordTypeUntracked (type);
-		}
-
-		// consider un-setting Untracked bit
-		// if we later track it for a particular reason?
-		public void MarkMethodUntracked (MethodDefinition method)
-		{
-			context.Annotations.Mark (method);
-			rule_dependency_recorder.RecordMethodUntracked (method);
 		}
 
 		public void MarkEntryMethod (MethodDefinition method)
@@ -706,12 +701,6 @@ namespace Mono.Linker {
 			System.Diagnostics.Debug.Assert (marked.Contains (field));
 			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.entry == field));
 			context.Annotations.Mark (field);
-		}
-
-		public void MarkDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type)
-		{
-			context.Annotations.Mark (type);
-			rule_dependency_recorder.RecordDeclaringTypeOfMethod (method, type);
 		}
 
 		public void MarkDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent)

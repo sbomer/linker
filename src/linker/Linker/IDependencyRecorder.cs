@@ -62,25 +62,29 @@ namespace Mono.Linker
 		void RecordTypeSpecWithReason (DependencyInfo reason, TypeSpecification spec);
 		void RecordMethodSpecWithReason (DependencyInfo reason, MethodSpecification spec);
 		void RecordFieldOnGenericInstance (DependencyInfo reason, FieldReference field);
+		void RecordMethodOnGenericInstance (DependencyInfo reason, MethodReference method);
 		void RecordDirectCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee);
 		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data);
 		void RecordAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target);
 
-		void RecordDangerousMethod (MethodDefinition method);
+		// void RecordDangerousMethod (MethodDefinition method);
 
 		void RecordEntryType (TypeDefinition type, EntryInfo info);
+		void RecordTypeLinkerInternal (TypeDefinition type);
+		void RecordEntryAssembly (AssemblyDefinition assembly, EntryInfo info);
 
-		void RecordScopeOfType (TypeDefinition type, IMetadataScope scope);
+		// void RecordScopeOfType (TypeDefinition type, IMetadataScope scope);
 		void RecordEntryField (FieldDefinition field, EntryInfo info);
 		void RecordEntryMethod (MethodDefinition method, EntryInfo info);
-		void RecordAssemblyCustomAttribute (CustomAttribute ca, EntryInfo info);
+		void RecordAssemblyCustomAttribute (ICustomAttribute ca, EntryInfo info);
 
 
 		void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type);
 		void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method);
+		void RecordInterfaceImplementation (TypeDefinition type, InterfaceImplementation iface);
 
-		void RecordCustomAttribute (DependencyInfo reason, CustomAttribute ca);
+		void RecordCustomAttribute (DependencyInfo reason, ICustomAttribute ca);
 
 		void RecordPropertyWithReason (DependencyInfo reason, PropertyDefinition property);
 		void RecordEventWithReason (DependencyInfo reason, EventDefinition evt);
@@ -94,12 +98,7 @@ namespace Mono.Linker
 		void RecordTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor);
 		void RecordTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor);
 		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
-		void RecordDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type);
 		void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent);
 		void RecordOverride (MethodDefinition @base, MethodDefinition @override);
-
-		void RecordFieldUntracked (FieldDefinition field);
-		void RecordTypeUntracked (TypeDefinition type);
-		void RecordMethodUntracked (MethodDefinition method);
 	}
 }

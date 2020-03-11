@@ -335,28 +335,37 @@ namespace Mono.Linker {
 			return reference;
 		}
 		
-		public void SetAction (AssemblyDefinition assembly, AssemblyAction defaultAction)
+		// this sets action if  not already set.
+		public void SetAction (AssemblyDefinition assembly, AssemblyAction defaultAction, EntryInfo info)
 		{
 			RegisterAssembly (assembly);
 
 			if (!_actions.TryGetValue (assembly.Name.Name, out AssemblyAction action))
 				action = defaultAction;
 
-			Annotations.SetAction (assembly, action);
+			Annotations.SetAction (assembly, action, info);
 		}
 
+
+		// this DOES include actions passed on the command-line.
 		protected void SetDefaultAction (AssemblyDefinition assembly)
 		{
 			AssemblyNameDefinition name = assembly.Name;
 
+			string source = null;
 			if (_actions.TryGetValue (name.Name, out AssemblyAction action)) {
+				source = "specified action";
 			} else if (IsCore (name)) {
 				action = _coreAction;
+				source = "core assembly action";
 			} else {
 				action = _userAction;
+				source = "user assembly action";
 			}
 
-			_annotations.SetAction (assembly, action);
+			// if the action changes... we should probably not track it multiple times.
+			// figure it out later.
+			_annotations.SetAction (assembly, action, new EntryInfo { kind = EntryKind.AssemblyAction, source = source, entry = assembly });
 		}
 
 		public static bool IsCore (AssemblyNameReference name)

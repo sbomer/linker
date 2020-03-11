@@ -38,9 +38,6 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 			case DependencyKind.EntryMethod:
 				// ok
 				break;
-			case DependencyKind.Untracked:
-				// ok
-				break;
 			default:
 				throw new ArgumentException ("invalid kept reason kind for method: " + nameof (kind));
 			}

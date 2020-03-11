@@ -92,7 +92,7 @@ namespace Mono.Linker.Steps
 		public static void ProcessLibrary (LinkContext context, AssemblyDefinition assembly, RootVisibility rootVisibility = RootVisibility.Any)
 		{
 			var action = rootVisibility == RootVisibility.Any ? AssemblyAction.Copy : AssemblyAction.Link;
-			context.SetAction (assembly, action);
+			context.SetAction (assembly, action, new EntryInfo { kind = EntryKind.AssemblyAction, source = "root library", entry = assembly });
 
 			context.Tracer.Push (assembly);
 
@@ -167,7 +167,9 @@ namespace Mono.Linker.Steps
 
 		void ProcessExecutable (AssemblyDefinition assembly)
 		{
-			Context.SetAction (assembly, AssemblyAction.Link);
+			// don't track, since this doesn't actually mark types in the assembly.
+			// copy overrides this.
+			Context.SetAction (assembly, AssemblyAction.Link, new EntryInfo { kind = EntryKind.Untracked });
 
 			Tracer.Push (assembly);
 

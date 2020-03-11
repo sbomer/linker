@@ -114,6 +114,40 @@ namespace Mono.Linker
 				} else {
 					// it already exsits in the graph, but not as an entry node...
 					// this is a problem. the actual graph will not see the Entry bit set.
+
+					// problem. this can happen pretty easily.
+					// an "-a" library will have the "copy" action.
+					// or, an "-a" executable may explicitly be set "copy".
+
+					// for a library, ProcessLibrary will mark all types as entry types
+					// AND MarkStep will go through "copy" assemblies, marking
+					// all types again.
+					// ResolveFromAssembly will mark the type from a RootAssembly.
+					// MarkStep will list the assembly as an EntryAssembly, and mark the type as an AssemblyAction type.
+
+					// ah... not that simple.
+					// MarkEntireType can for example MarkField, which marks the field's type, etc...
+					// so depending on ordering, we can get a particular type first as either an
+					// entry OR as a normal dependency type.
+
+					// what should we do when an entry => a type, and that type is also an entry itself?
+
+					// multiple entries: possible.
+					// entry and not entry: impossible.
+					// entry and other dependency: possible
+					//   prefer the entry reason if it exists.
+					//   marking something as an entry will prevent tracing other reasons to keep it.
+					//   need a way to mark it as entry without tracing?
+					// AVOID:
+					//   want to make sure we never hit a dependency node BEFORE it's marked as an entry.
+					//   but the algorithm currently does that.
+					//   without further changes... would be hard to do.
+					//   could only consider things entries in ResolveFromAssemblyStep,
+					//   and not here. then how to account for MarkEntireAssembly things?
+					//     could mark assembly as an entry, and these as a dependency of the assembly...
+					//     maybe assemblies belong in the graph even though they are never marked.
+					// problem is that an assembly can be conceptually a dependency, but not kept.
+					//  how? 
 					throw new Exception("attempted to add entry node for extant non-entry node");
 				}
 			} else {
@@ -182,13 +216,20 @@ namespace Mono.Linker
 		// potentially unsafe dataflow results.
 		public readonly HashSet<UnsafeReachingData> unsafeReachingData;
 		public readonly HashSet<EntryInfo> entryInfo;
+		public readonly HashSet<TypeDefinition> internalMarkedTypes;
 		LinkContext context;
 
 		public GraphDependencyRecorder (LinkContext context) {
 			graph = new SearchableDependencyGraph<NodeInfo, DependencyInfo> ();
 			unsafeReachingData = new HashSet<UnsafeReachingData> ();
 			entryInfo = new HashSet<EntryInfo> ();
+			internalMarkedTypes = new HashSet<TypeDefinition> ();
 			this.context = context;
+		}
+
+		public void RecordTypeLinkerInternal (TypeDefinition type) {
+			graph.AddNode (GetOrCreateNode (type));
+			internalMarkedTypes.Add (type);
 		}
 
 		public void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method) {
@@ -214,7 +255,11 @@ namespace Mono.Linker
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (field), reason));
 		}
 
-		public void RecordCustomAttribute (DependencyInfo reason, CustomAttribute ca) {
+		public void RecordMethodOnGenericInstance (DependencyInfo reason, MethodReference method) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (method), reason));
+		}
+
+		public void RecordCustomAttribute (DependencyInfo reason, ICustomAttribute ca) {
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (reason.source), GetOrCreateNode (ca), reason));
 		}
 
@@ -230,6 +275,7 @@ namespace Mono.Linker
 			// TODO: track instruction index
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (caller), GetOrCreateNode (callee), new DependencyInfo { kind = DependencyKind.DirectCall }));
 		}
+
 		public void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee) {
 			// TODO: track instruction index
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (caller), GetOrCreateNode (callee), new DependencyInfo { kind = DependencyKind.VirtualCall }));
@@ -254,16 +300,20 @@ namespace Mono.Linker
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (@base), GetOrCreateNode (@override), new DependencyInfo { kind = DependencyKind.Override }));
 		}
 
-		public void RecordScopeOfType (TypeDefinition type, IMetadataScope scope) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (scope), new DependencyInfo { kind = DependencyKind.ScopeOfType }));
-		}
+		// public void RecordScopeOfType (TypeDefinition type, IMetadataScope scope) {
+		// 	graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (scope), new DependencyInfo { kind = DependencyKind.ScopeOfType }));
+		// }
 
 		public void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (ctor), GetOrCreateNode (@type), new DependencyInfo { kind = DependencyKind.ConstructedType }));
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (ctor), GetOrCreateNode (type), new DependencyInfo { kind = DependencyKind.ConstructedType }));
 		}
 
 		public void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method) {
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (method), new DependencyInfo { kind = DependencyKind.OverrideOnInstantiatedType }));
+		}
+
+		public void RecordInterfaceImplementation (TypeDefinition type, InterfaceImplementation iface) {
+			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (iface), new DependencyInfo { kind = DependencyKind.InterfaceImplementationOnType }));
 		}
 
 		public void RecordEntryType (TypeDefinition type, EntryInfo info) {
@@ -272,8 +322,14 @@ namespace Mono.Linker
 			entryInfo.Add (info);
 		}
 
+		public void RecordEntryAssembly (AssemblyDefinition assembly, EntryInfo info) {
+			var node = GetOrCreateEntryNode (assembly);
+			graph.AddNode (node);
+			entryInfo.Add (info);
+		}
+
 		// TODO: combine entry helpers into one?
-		public void RecordAssemblyCustomAttribute (CustomAttribute ca, EntryInfo info) {
+		public void RecordAssemblyCustomAttribute (ICustomAttribute ca, EntryInfo info) {
 			var node = GetOrCreateEntryNode (ca);
 			graph.AddNode (node);
 			entryInfo.Add (info);
@@ -319,37 +375,8 @@ namespace Mono.Linker
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (field), GetOrCreateNode (cctor), new DependencyInfo { kind = DependencyKind.CctorForField }));
 		}
 
-		public void RecordDeclaringTypeOfMethod (MethodDefinition method, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (method), GetOrCreateNode (type), new DependencyInfo { kind = DependencyKind.DeclaringTypeOfMethod }));
-		}
 		public void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent) {
 			graph.AddEdge (new Edge<NodeInfo, DependencyInfo> (GetOrCreateNode (type), GetOrCreateNode (parent), new DependencyInfo { kind = DependencyKind.DeclaringTypeOfType }));
-		}
-
-		public void RecordFieldUntracked (FieldDefinition field) {
-			// TODO: maybe make this more performant?
-			var node = GetOrCreateUntrackedNode (field);
-			if (node.Untracked)
-				return;
-//			graph.AddNode (node);
-		}
-
-		// problem: can be an untracked dependency.
-		// but we don't want to create a new untracked node each time...
-		// ENTRY must be set the first time.
-		// DANGEROUS is not set on a node, but on an edge.
-		public void RecordTypeUntracked (TypeDefinition type) {
-			var node = GetOrCreateUntrackedNode (type);
-			if (node.Untracked)
-				return;
-//			graph.AddNode (node);
-		}
-
-		public void RecordMethodUntracked (MethodDefinition method) {
-			var node = GetOrCreateUntrackedNode (method);
-			if (node.Untracked)
-				return;
-			graph.AddNode (node);
 		}
 	}
 }
