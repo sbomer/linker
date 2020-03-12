@@ -66,6 +66,29 @@ namespace Mono.Linker
 			InstantiatedFullyPreservedType, // we mark fully preserved types as instantiated (no source)
 			AlwaysInstantiatedType, // we always mark certain types as instantiated (no source)
 
+		// marking custom attributes
+			CustomAttribute, // ICustomAttribute on a ICustomAttributeProvider
+			AssemblyOrModuleCustomAttribute, // the "source" isn't in the graph! special case.
+			GenericParameterCustomAttribute, // custom attribute on a generic parameter
+			GenericParameterConstraintCustomAttribute, // what it sounds like
+
+
+		// custom attribute dependencies. the attributes may not be marked, but are still recorded logically.
+			MethodReferencedByAttribute, // customattribute -> method
+			// currently used for DebuggerDisplayAttribute.
+			// also for EventDataAttribute (which keeps public instance property methods)
+			// also for TypeConverterAttribute (which results in default ctor, and all methods taking one Type argument on the specified converter type being kept)
+			FieldReferencedByAttribute,
+			// non-understood DebuggerDisplayAttribute, marks all fields
+			// SoapHeaderAttribute on a method will keep a field of the declaring type
+			TypeReferencedByAttribute, // debuggertypeproxy
+			CustomAttributeArgumentType, // this depends on either a CustomAttribute or a SecurityAttribute. both implement ICustomAttribute, so we use the same helper.
+			CustomAttributeArgumentValue, // same as above
+			CustomAttributeField, // marking named field of a CA
+			MethodKeptForNonUnderstoodAttribute, // used for DebuggerDIsplayAttribute when the linker isn't able to parse the string to determine which methods are referenced.
+
+
+		// custom attributes on other nodes that don't necessarily get marked.
 
 		TriggersCctorThroughFieldAccess, // method -> cctor // this method may trigger the cctor of the specified type.
 		TriggersCctorForCalledMethod, // method -> cctor
@@ -82,8 +105,6 @@ namespace Mono.Linker
 		GenericArgumentType, // might be used for generic arg of types or methods.
 		CatchType,
 
-		CustomAttributeArgumentType, // this depends on either a CustomAttribute or a SecurityAttribute. both implement ICustomAttribute, so we use the same helper.
-		CustomAttributeArgumentValue, // same as above
 
 
 
@@ -92,15 +113,7 @@ namespace Mono.Linker
 			// used to track:
 			// type with [Serializable], keeps default ctor and special serialization ctor implied by ISerializable (without checking for ISerializable)
 			// MarkType, any methods with On(De)Serializ(ed/ing)Attribute are kept.
-		MethodReferencedByAttribute, // customattribute -> method
-			// currently used for DebuggerDisplayAttribute.
-			// also for EventDataAttribute (which keeps public instance property methods)
-			// also for TypeConverterAttribute (which results in default ctor, and all methods taking one Type argument on the specified converter type being kept)
-		FieldReferencedByAttribute,
-			// non-understood DebuggerDisplayAttribute, marks all fields
-			// SoapHeaderAttribute on a method will keep a field of the declaring type
-		TypeReferencedByAttribute, // debuggertypeproxy
-		MethodKeptForNonUnderstoodAttribute, // used for DebuggerDIsplayAttribute when the linker isn't able to parse the string to determine which methods are referenced.
+
 		InterfaceImplementationInterfaceType,
 			// a type may have an interfaceimpl of another (interface) type. goes from impl -> interface type
 		InterfaceImplementationOnType,
@@ -184,12 +197,6 @@ namespace Mono.Linker
 		//MethodReturnType,
 
 
-		CustomAttribute, // ICustomAttribute on a ICustomAttributeProvider
-		AssemblyOrModuleCustomAttribute, // the "source" isn't in the graph! special case.
-		GenericParameterCustomAttribute, // custom attribute on a generic parameter
-		GenericParameterConstraintCustomAttribute, // what it sounds like
-
-		CustomAttributeField, // marking named field of a CA
 		
 		
 		// marked method on an instantiated type.
