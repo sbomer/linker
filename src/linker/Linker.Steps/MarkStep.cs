@@ -43,7 +43,6 @@ namespace Mono.Linker.Steps {
 	public partial class MarkStep : IStep {
 
 		protected LinkContext _context;
-
 		protected Queue<(MethodDefinition, DependencyInfo)> _methods;
 		protected List<MethodDefinition> _virtual_methods;
 		protected Queue<AttributeProviderPair> _assemblyLevelAttributes;
@@ -95,6 +94,7 @@ namespace Mono.Linker.Steps {
 
 					foreach (TypeDefinition type in assembly.MainModule.Types)
 						InitializeType (type);
+
 					break;
 				}
 			} finally {
@@ -116,52 +116,15 @@ namespace Mono.Linker.Steps {
 					InitializeType (nested);
 			}
 
-			// problem is that this does full MarkType logic
-			// which can recursively mark types
-			// BEFORE we have encountered all of the "entry" types.
-			// so some of the processing is done before we've determined entries.
-			// that would be OK, if not for the fact that our graph is immutable.
-			// we could either:
-			// allow mutating the graph (dangerous!)
-			//   is it actually so bad?
-			//   Entry info isn't used until later.
-			// OR, track entry info differently somehow.
+			if (!Annotations.IsMarked (type))
+				return;
 
-			// the current algorithm will  sometimes do initialization
-			// (for example for an assembly that has been marked "copy")
-			// AFTER it has marked the type in MarkType()
-			// but never before the type has at least been early-marked in a different step.
-			// when the type is marked, we should record it.
-			// what's the reason to mark it early on?
-			// or to mark it here?
-
-			// I want multiple markings to correspond to multiple conceptual reasons.
-			// once because it's a copy assembly, once because it's a field type. fine.
-			// base reason is user input.
-			// all user input should be processed before we do recursive logic.
-			// some parts of markstep will do MarkType for things already marked in annotations,
-			// for entry user reasons.
-			// user => mark annotation
-			// mark annotation => initialize in markstep
-
-			if (Annotations.IsMarked (type))
-				MarkType (type, new DependencyInfo (DependencyKind.EntryType));
-
-			// this type has already been marked.
-			// it could only have been marked as an entry type so far.
-			// TODO: assert that the type has previously been marked as an entry type.
-			// no, it might have been marked as declaring type of the entry method.
-			// or even declaring type of a kept type.
-			// TODO: FIX THIS BUG.
-			// we need to track the reason that a type was early-marked,
-			// so that it can be appropriately set here.
-
-			// if this was the declaring type of the entry point method,
-			// want to trigger its cctor from entry method.
-
-			// xml roots are incompatible with proper tracing.
-			// how to report them?
-			// just report all methods as potentially called.
+			// We may get here for a type marked by an earlier step, or by a type
+			// marked indirectly as the result of some other InitializeType call. So
+			// these types are not marked for any particular reason - just that they are marked
+			// already. We could fix this by only initializing types marked in earlier steps,
+			// but for now we just mark these these without a specific reason.
+			MarkType (type, new DependencyInfo (DependencyKind.AlreadyMarkedType));
 
 			if (type.HasFields)
 				InitializeFields (type);
@@ -188,73 +151,38 @@ namespace Mono.Linker.Steps {
 
 		void InitializeFields (TypeDefinition type)
 		{
-			foreach (FieldDefinition field in type.Fields)
-				if (Annotations.IsMarked (field)) {
-					// TODO: assert that it was previously marked as an entry.
-					MarkField (field, new DependencyInfo (DependencyKind.EntryField));
-				}
+			foreach (FieldDefinition field in type.Fields) {
+				if (!Annotations.IsMarked (field))
+					continue;
+				// Similar to InitializeType, we may get here for any number of reasons.
+				MarkField (field, new DependencyInfo (DependencyKind.AlreadyMarkedField));
+			}
 		}
 
 		void InitializeMethods (Collection<MethodDefinition> methods)
 		{
-			foreach (MethodDefinition method in methods)
-				if (Annotations.IsMarked (method)) {
-					// this enqueues marked methods in marked types.
-					// can there be marked methods in unmarked types?
-
-					// can get here for a preserveall type (from xml)
-					// which has preserve info applied in MarkType from InitializeType.
-
-					// TODO: assert that it was previously marked as an entry.
-					// we don't really want to do this twice...
-					// maybe we can just get rid of tracing from the earlier steps?
-					// we mark it once up-front. (early marking)
-					// then we actually process it again (and mark it as well)
-
-					// I think this is a bug, similar to InitializeTypes.
-					// there might be a way to mark the method before it's initialized.
-					// then when initializing, it would already be in the graph as a non-Entry.
-					// need to make sure anything marked as an ENTRY is so before it's ever put in
-					// the dependency graph. this lets us avoid mutating things.
-					EnqueueMethod (method, new DependencyInfo (DependencyKind.EntryMethod));
-				}
+			foreach (MethodDefinition method in methods) {
+				if (!Annotations.IsMarked (method))
+					continue;
+				// Similar to InitializeType, we may get here for any number of reasons.
+				EnqueueMethod (method, new DependencyInfo (DependencyKind.AlreadyMarkedMethod));
+			}
 		}
 
-		// this logic can run multiple times... :(
-
-		// MarkEntireType may be called AFTER MarkType has already run for a type.
-		// SO, we can't assume that marking a type here will be the first time.
-		// either:
-		// - don't mark it as an entry here, OR
-		//     cleaner and simpler if we ensure that "entry" marking happens before any recursive scanning.
-		//     can't mark "entry" in MET. must give each MET a reason.
-		//     reason can be: nested, userdep, type in assembly. done!
-		//     type in assembly: where does assembly come from? need to record it in the graph or as an entry.
-		//     MarkStep never sets action - only responds to already-set actions.
-		//     assembly action is the entry.
-		//     we will have types marked as entry AND in the graph - that is OK.
-		// - allow marking it as an entry here, even though it was already marked for another reason.
 		void MarkEntireType (TypeDefinition type, DependencyInfo reason)
 		{
+			Debug.Assert (new DependencyKind [] {
+				DependencyKind.TypeInAssembly,
+				DependencyKind.NestedType,
+				DependencyKind.PreserveDependencyType
+			}.Contains (reason.Kind));
+
 			if (type.HasNestedTypes) {
 				foreach (TypeDefinition nested in type.NestedTypes)
 					MarkEntireType (nested, new DependencyInfo (DependencyKind.NestedType, type));
 			}
 
-			switch (reason.Kind) {
-			case DependencyKind.TypeInAssembly:
-				Annotations.MarkTypeWithReason (reason, type);
-				break;
-			case DependencyKind.NestedType:
-				Annotations.MarkNestedType ((TypeDefinition)reason.Source, type);
-				break;
-			case DependencyKind.UserDependencyType:
-				Annotations.MarkUserDependencyType ((CustomAttribute)reason.Source, type);
-				break;
-			default:
-				throw new NotImplementedException ("don't support kind " + reason.Kind);
-			}
-
+			Annotations.MarkTypeWithReason (reason, type);
 			MarkCustomAttributes (type, new DependencyInfo (DependencyKind.CustomAttribute, type));
 			MarkTypeSpecialCustomAttributes (type);
 
@@ -274,23 +202,14 @@ namespace Mono.Linker.Steps {
 
 			if (type.HasMethods) {
 				foreach (MethodDefinition method in type.Methods) {
-					// Annotations.Mark (method);
-					// isn't this Mark redundant?
+					// possibly redundant since we EnqueueMethod below anyway.
+					Annotations.MarkMethodWithReason (new DependencyInfo (DependencyKind.MethodOfType, type), method);
 					Annotations.SetAction (method, MethodAction.ForceParse);
-					// we don't have a particular reason this method can be called...
-					// so don't track it.
-					// can only get here
-					// because copy/save assembly caused everything in it to be
-					// marked.
-					// unknown entry reason for now.
-					// untracked dependency.
-					EnqueueMethod (method, new DependencyInfo (DependencyKind.MethodForType, type));
+					EnqueueMethod (method, new DependencyInfo (DependencyKind.MethodOfType, type));
 				}
 			}
 
 			if (type.HasProperties) {
-				// TODO: this won't actually mark property methods!
-				// but they'll be marked by the method marking logic. so no bug here.
 				foreach (var property in type.Properties) {
 					MarkProperty (property, new DependencyInfo (DependencyKind.PropertyOfType, type));
 				}
@@ -428,10 +347,9 @@ namespace Mono.Linker.Steps {
 
 		void ProcessOverride (OverrideInformation overrideInformation, MethodDefinition virtualMethod)
 		{
-			// TODO: is it guaranteed that method is the same as the virtual method we are processing?
 			var method = overrideInformation.Override;
 			var @base = overrideInformation.Base;
-			// System.Diagnostics.Debug.Assert (method == virtualMethod);
+			// TODO: is it guaranteed that method is the same as the virtual method we are processing?
 			if (method != virtualMethod) {
 				_context.LogMessage("override processing for " + method.ToString() + " gives override: " + method.ToString() + " of " + @base.ToString());
 			}
@@ -454,64 +372,15 @@ namespace Mono.Linker.Steps {
 			if (!isInstantiated && !@base.IsAbstract && _context.IsOptimizationEnabled (CodeOptimizations.OverrideRemoval, method))
 				return;
 
-			// only track instantiations if override removal is enabled.
+			// only track instantiations if override removal is enabled and the type is instantiated
 			// if it's disabled, all overrides are kept, so there's no instantiation site to blame.
-			if (_context.IsOptimizationEnabled (CodeOptimizations.OverrideRemoval, method)) {
-				if (isInstantiated) {
-					MarkMethod (method, new DependencyInfo (DependencyKind.OverrideOnInstantiatedType, method.DeclaringType));
-				} else if (@base.IsAbstract) {
-					// handle abstract methods the same as we do any method when override removal is disabled.
-					MarkMethod (method, new DependencyInfo (DependencyKind.Override, @base)); // don't track this dependency yet.
-				}
+			if (_context.IsOptimizationEnabled (CodeOptimizations.OverrideRemoval, method) && isInstantiated) {
+				MarkMethod (method, new DependencyInfo (DependencyKind.OverrideOnInstantiatedType, method.DeclaringType));
 			} else {
-				// if it's disabled, all overrides of called methods are kept.
-				// there's nothing to blame but the called method.
+				// if the optimization is disabled or it's an abstract type, we just mark it as a normal override
+				Debug.Assert (!_context.IsOptimizationEnabled (CodeOptimizations.OverrideRemoval, method) || @base.IsAbstract);
 				MarkMethod (method, new DependencyInfo (DependencyKind.Override, @base));
 			}
-
-			// here:
-			// depending on why the type was instantiated, we may want to track dependencies differently.
-			// if instantiated due to ctor call, would want an edge ctor -> virtual method
-			// if instantiated because it's an interface... there is no ctor.
-			// general thing that works: edge from type to the override
-
-			// this is where we mark an override of a virtual method.
-			// BUT we don't know WHY whe virtual itself was marked yet.
-			// maybe because it was called, maybe something else.
-			// we only want to track overrides if we know that this method has been called.
-			// we at this point want there to be an edge from the original caller
-			// to this method.
-			// need to remember the original caller.
-			// if we ever make this more accurate, the actual callers would be present.
-			// but here, ANY caller to the base method needs to be updated.
-			// but there's no way we will have that information at this point.
-			// if we mark the target for a calvirt...
-			// do we make its mark reason depend on the reason for marking the method itself?
-			// when do we want to create an edge from a virtual to an override?
-			// whenever the linker keeps it? or for more specific reasons?
-			// the linker should only keep it if... it's really necessary.
-			// for now, always track overrides.
-
-			// because marking a type instantiated goes through annotations, when we check it,
-			// it no longer has a reason for being instantiated.
-			// -> give it a reason (track more stuff for instantiated types)
-			// -> or just have a type -> method dependency for instantiated types
-			// for now:
-			//   separately track why a type was instantiated,
-			//   and the consequences of the instantiation.
-
-			// he have:
-			// marked a virtual
-			// with an override
-			// whose declaring type is marked
-			// that's not already processed: problem!
-			//    we need to be able to re-process an override.
-			//    as an override of a different virtual call target.
-			//    well, I guess it's enough to just report one. don't need to make the graph complete.
-			// and also not already marked
-			//    problem: we will only ever mark an override if it's not already marked!
-			// and not an unneeded interface override
-			// and (for override removal), it's instantiated or abstract
 
 			ProcessVirtualMethod (method);
 		}
@@ -590,6 +459,8 @@ namespace Mono.Linker.Steps {
 				MarkUserDependency (mr, ca);
 
 				if (_context.KeepDependencyAttributes || Annotations.GetAction (mr.Module.Assembly) != AssemblyAction.Link) {
+					// record the custom attribute without marking it
+					_context.MarkingHelpers.MarkCustomAttribute (ca, reason);
 					MarkCustomAttribute (ca, reason);
 				}
 
@@ -676,14 +547,14 @@ namespace Mono.Linker.Steps {
 			}
 
 			if (member == "*") {
-				MarkEntireType (td, new DependencyInfo (DependencyKind.UserDependencyType, ca));
+				MarkEntireType (td, new DependencyInfo (DependencyKind.PreserveDependencyType, ca));
 				return;
 			}
 
-			if (MarkDependencyMethod (td, member, signature, context))
+			if (MarkDependencyMethod (td, member, signature, new DependencyInfo (DependencyKind.PreserveDependencyMethod, ca)))
 				return;
 
-			if (MarkDependencyField (td, member, new DependencyInfo (DependencyKind.UserDependencyField, ca)))
+			if (MarkDependencyField (td, member, new DependencyInfo (DependencyKind.PreserveDependencyField, ca)))
 				return;
 
 			_context.LogMessage (MessageImportance.High, $"Could not resolve dependency member '{member}' declared in type '{td.FullName}'");
@@ -697,7 +568,7 @@ namespace Mono.Linker.Steps {
 			return type?.Resolve ();
 		}
 
-		bool MarkDependencyMethod (TypeDefinition type, string name, string[] signature, MemberReference context)
+		bool MarkDependencyMethod (TypeDefinition type, string name, string[] signature, DependencyInfo reason)
 		{
 			bool marked = false;
 
@@ -716,7 +587,7 @@ namespace Mono.Linker.Steps {
 					continue;
 
 				if (signature == null) {
-					MarkIndirectlyCalledMethod (m, new DependencyInfo (DependencyKind.PreserveDependency, context));
+					MarkIndirectlyCalledMethod (m, reason);
 					marked = true;
 					continue;
 				}
@@ -736,7 +607,7 @@ namespace Mono.Linker.Steps {
 				if (i < 0)
 					continue;
 
-				MarkIndirectlyCalledMethod (m, new DependencyInfo (DependencyKind.PreserveDependency, context));
+				MarkIndirectlyCalledMethod (m, reason);
 				marked = true;
 			}
 
@@ -828,13 +699,8 @@ namespace Mono.Linker.Steps {
 
 		protected void MarkStaticConstructor (TypeDefinition type, DependencyInfo reason)
 		{
-			foreach (var method in type.Methods) {
-				if (IsNonEmptyStaticConstructor (method)) {
-					MethodDefinition cctor = MarkMethod (method, reason);
-					if (cctor != null)
-						Annotations.SetPreservedStaticCtor (type);
-				}
-			}
+			if (MarkMethodIf (type.Methods, IsNonEmptyStaticConstructor, reason) != null)
+				Annotations.SetPreservedStaticCtor (type);
 		}
 
 		protected virtual bool ShouldMarkTopLevelCustomAttribute (AttributeProviderPair app, MethodDefinition resolvedConstructor)
@@ -883,9 +749,6 @@ namespace Mono.Linker.Steps {
 				MarkSecurityAttribute (sa, reason);
 		}
 
-		// TODO: security attributes can be removed by a later step.
-		// maybe that's why they don't get marked here?
-		// don't think so - RemoveSecurityStep happens before MarkStep.
 		protected virtual void MarkSecurityAttribute (SecurityAttribute sa, DependencyInfo reason)
 		{
 			TypeReference security_type = sa.AttributeType;
@@ -895,23 +758,19 @@ namespace Mono.Linker.Steps {
 				return;
 			}
 
-			// the sa never acutually gets marked.
-			// unlike custom attributes. so we can't include sa in the graph, can we?
-			// maybe we just should.
+			// security attributes participate in inference logic without being marked
 			switch (reason.Kind) {
 			case DependencyKind.AssemblyOrModuleCustomAttribute:
-				// track this unmarked sa as an entry.
+				// assembly attributes are treated as entry points for the inference because
+				// they get processed regardless of whether the assembly is kept
 				_context.MarkingHelpers.MarkEntryCustomAttribute (sa, new EntryInfo (EntryKind.AssemblyOrModuleCustomAttribute, reason.Source, sa));
 				break;
 			default:
-				// otherwise, security attribute is recorded with reason (even though never marked)
 				_context.MarkingHelpers.MarkSecurityAttribute (sa, reason);
 				break;
 			}
 
-			// this will mark ca -> attribute type
 			MarkType (security_type, new DependencyInfo (DependencyKind.AttributeType, sa));
-			// these will mark ca -> properties, ca -> fields.
 			MarkCustomAttributeProperties (sa, type);
 			MarkCustomAttributeFields (sa, type);
 		}
@@ -943,7 +802,8 @@ namespace Mono.Linker.Steps {
 				if (property != null)
 					return property;
 
-				// what if it's generic?
+				// this logic would neglect to mark parameters for generic instances
+				Debug.Assert (!(type.BaseType is GenericInstanceType));
 				type = type.BaseType?.Resolve ();
 			}
 
@@ -975,7 +835,8 @@ namespace Mono.Linker.Steps {
 				if (field != null)
 					return field;
 
-				// generic?
+				// this logic would neglect to mark parameters for generic instances
+				Debug.Assert (!(type.BaseType is GenericInstanceType));
 				type = type.BaseType?.Resolve ();
 			}
 
@@ -989,7 +850,8 @@ namespace Mono.Linker.Steps {
 				if (method != null)
 					return method;
 
-				// generic?
+				// this would neglect to mark parameters for generic instances
+				Debug.Assert (!(type.BaseType is GenericInstanceType));
 				type = type.BaseType.Resolve ();
 			}
 
@@ -1010,17 +872,14 @@ namespace Mono.Linker.Steps {
 			var at = argument.Type;
 
 			if (at.IsArray) {
-				// for some reason, custom attribute arguments that are arrays are modeled
-				// as arrays of custom attribute arguments,
-				// each of which has a type and a value,
-				// instead of an array of certain type, with a list of values attached.
-				// so this will result in redundant marking of the type, I guess.
 				var et = at.GetElementType ();
 
 				MarkType (et, new DependencyInfo (DependencyKind.CustomAttributeArgumentType, ca));
 				if (argument.Value == null)
 					return;
 
+				// array arguments are modeled as a CustomAttributeArgument [], and will mark the
+				// type once for each element in the array
 				foreach (var caa in (CustomAttributeArgument [])argument.Value)
 					MarkCustomAttributeArgument (caa, ca);
 
@@ -1037,9 +896,7 @@ namespace Mono.Linker.Steps {
 				case "Object":
 					var boxed_value = (CustomAttributeArgument)argument.Value;
 					MarkType (boxed_value.Type, new DependencyInfo (DependencyKind.CustomAttributeArgumentType, ca));
-					// don't understand this logic... don't worry about it for now
-					// worry when we get there. just mark "null" reason, and expect a NRE later
-					MarkCustomAttributeArgument (boxed_value, null);
+					MarkCustomAttributeArgument (boxed_value, ca);
 					return;
 				}
 			}
@@ -1071,12 +928,6 @@ namespace Mono.Linker.Steps {
 
 		void MarkEntireAssembly (AssemblyDefinition assembly)
 		{
-			// don't think we mark the module for this assembly.
-			// this could be a bug. if nothing uses a type referencing this assembly's
-			// mainmodule, it would actually be removed.
-
-			// TODO: prove that a "-a" assembly will be removed
-			// because its module doesn't ever get marked.
 			MarkCustomAttributes (assembly, new DependencyInfo (DependencyKind.AssemblyOrModuleCustomAttribute, assembly));
 			MarkCustomAttributes (assembly.MainModule, new DependencyInfo (DependencyKind.AssemblyOrModuleCustomAttribute, assembly.MainModule));
 
@@ -1084,12 +935,9 @@ namespace Mono.Linker.Steps {
 				// TODO: This needs more work accross all steps
 			}
 
-			// now that assemblies are in the graph, need to mark entry assemblies.
-			foreach (TypeDefinition type in assembly.MainModule.Types) {
+			// blame marking of these types on entry assemblies, which are given entry reasons.
+			foreach (TypeDefinition type in assembly.MainModule.Types)
 				MarkEntireType (type, new DependencyInfo (DependencyKind.TypeInAssembly, assembly));
-			}
-			// PROBLEM! by the time we get here, the type might already have been marked for another reason.
-			// mark it instead as a dependency of the assembly.
 		}
 
 		void ProcessModule (AssemblyDefinition assembly)
@@ -1192,52 +1040,16 @@ namespace Mono.Linker.Steps {
 
 		protected void MarkField (FieldReference reference, DependencyInfo reason)
 		{
-
-
 			if (reference.DeclaringType is GenericInstanceType) {
-				// Console.WriteLine("marking generic field ref " + reference.ToString());
-				// with an additional reason of marking the type.
-				// this is necessary because the fieldref may have a generic instance type
-				// which is different from the type of the resolved field.
-				// we want to make sure that the generic parameters of this type get marked.
-				// blame the resolved field, not the generic instance (which is never marked on its own)
-				if (reference.Resolve () != null) {
-					switch (reason.Kind) {
-					case DependencyKind.FieldAccess:
-					case DependencyKind.Ldtoken:
-						// expect that we can get a generic fieldref from these instructions.
-						// what does resolving a field do?
-						// field with generic type? only allowed if type parameter is on theh type.
-						// unlike methods.
-						break;
-					default:
-						// but I don't think other things can produce fieldrefs to fields on generic instances.
-						throw new NotImplementedException("weird");
-					}
+				Debug.Assert (reason.Kind == DependencyKind.FieldAccess || reason.Kind == DependencyKind.Ldtoken);
+				// blame this field reference (without actually marking) on the original reason
+				_context.MarkingHelpers.MarkFieldOnGenericInstance (reference, reason);
+				MarkType (reference.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfField, reference));
 
-					// need to blame this field ref on the original reason (without actually marking it)
-					_context.MarkingHelpers.MarkFieldOnGenericInstance (reference, reason);
-					// need to blame this field ref.
-					MarkType (reference.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfField, reference));
-					// but the MarkField of the def needs to be blamed on this ref, not the original reason.
-					reason = new DependencyInfo (DependencyKind.FieldOnGenericInstance, reference);
-
-				} else {
-					throw new Exception("what to do here?");
-					// used to MarkType (reference.DeclaringType)...
-					// if the field ref is a generic type, 
-					//MarkType (reference.DeclaringType); // no reason, hopefully uncommon.
-				}
-
-				// BUT: problem is this field itself won't actually get marked.
-				// only its resolved one will.
-
-				// TODO:
-				// what to do when we mark things as result of a generic instantiation,
-				// when the instantiation doesn't exist as a definition, but only as a reference (and therefore doesn't get "marked" per-se)?
-				// unknown so far.
-				// should never mark GenericInstType.
+				// blame the field definition that we will resolve on the field reference
+				reason = new DependencyInfo (DependencyKind.FieldOnGenericInstance, reference);
 			}
+
 			FieldDefinition field = reference.Resolve ();
 
 			if (field == null) {
@@ -1248,13 +1060,20 @@ namespace Mono.Linker.Steps {
 			MarkField (field, reason);
 		}
 
-		// Mark* methods should have the semantics that they ultimately
-		// call Annotations.Mark, and they always record some kind of dependency using Recorder.
-		// they can additionally have logic that is only ever done once per method.
-		// which is Process*.
-
 		void MarkField (FieldDefinition field, DependencyInfo reason)
 		{
+			Debug.Assert(new DependencyKind [] {
+				DependencyKind.FieldAccess,
+				DependencyKind.AlreadyMarkedField,
+				DependencyKind.FieldForType,
+				DependencyKind.FieldPreservedForType,
+				DependencyKind.InteropMethodDependency,
+				DependencyKind.FieldReferencedByAttribute,
+				DependencyKind.Ldtoken,
+				DependencyKind.FieldOnGenericInstance,
+				DependencyKind.EventSourceProviderField,
+			});
+
 			if (CheckProcessed (field))
 				return;
 
@@ -1265,53 +1084,26 @@ namespace Mono.Linker.Steps {
 			DoAdditionalFieldProcessing (field);
 
 			var parent = field.DeclaringType;
-			if (!Annotations.HasPreservedStaticCtor (parent))
-				switch (reason.Kind) {
-				case DependencyKind.FieldAccess:
-					var methodAccessingField = reason.Source;
-					MarkStaticConstructor (parent, new DependencyInfo (DependencyKind.TriggersCctorThroughFieldAccess, methodAccessingField));
-					break;
-				case DependencyKind.EntryField:
-				case DependencyKind.FieldForType:
-				case DependencyKind.FieldPreservedForType:
-				case DependencyKind.InteropMethodDependency:
-				case DependencyKind.FieldReferencedByAttribute:
-				case DependencyKind.Ldtoken:
-				case DependencyKind.FieldOnGenericInstance:
-				case DependencyKind.EventSourceProviderField:
-					// generic: mark cctor for this field if we don't have a better reason.
-					MarkStaticConstructor (parent, new DependencyInfo (DependencyKind.CctorForField, field));
-					break;
-				default:
-					throw new NotImplementedException (reason.Kind.ToString());
-				}
+			if (!Annotations.HasPreservedStaticCtor (parent)) {
+				var cctorReason = reason.Kind switch {
+					// report an edge directly from the method accessing the field to the static ctor it triggers
+					DependencyKind.FieldAccess => new DependencyInfo (DependencyKind.TriggersCctorThroughFieldAccess, methodAccessingField),
+					_ => new DependencyInfo (DependencyInfo.CctorForField, field)
+				};
+				MarkStaticConstructor (parent, cctorReason);
+			}
 
 			if (Annotations.HasSubstitutedInit (field)) {
 				Annotations.SetPreservedStaticCtor (parent);
 				Annotations.SetSubstitutedInit (parent);
 			}
 
-			switch (reason.Kind) {
-			case DependencyKind.FieldAccess:
-				// field was accessed from a method.
-				// let's record it for now, but not sure how to report it.
-				Annotations.MarkFieldAccessFromMethod ((MethodDefinition)reason.Source, field);
-				break;
-			case DependencyKind.FieldForType:
-			case DependencyKind.FieldPreservedForType:
-			case DependencyKind.InteropMethodDependency:
-			case DependencyKind.FieldReferencedByAttribute:
-			case DependencyKind.Ldtoken:
-			case DependencyKind.FieldOnGenericInstance:
-			case DependencyKind.EventSourceProviderField:
-				Annotations.MarkFieldWithReason (reason, field);
-				break;
-			case DependencyKind.EntryField:
-				Annotations.MarkEntryField (field);
-				break;
-			default:
-				throw new NotImplementedException (reason.Kind.ToString());
+			if (reason.Kind == DependencyKind.AlreadyMarkedField) {
+				Debug.Assert (Annotations.IsMarked (field));
+				return;
 			}
+
+			Annotations.MarkFieldWithReason (reason, field);
 		}
 
 		protected virtual bool IgnoreScope (IMetadataScope scope)
@@ -1322,26 +1114,51 @@ namespace Mono.Linker.Steps {
 
 		void MarkScope (IMetadataScope scope, TypeDefinition type)
 		{
-			// scope is an AssemblyNameReference, or ModuleReference, or ModuleDefinition.
-			// 
-			// if (scope is IMetadataTokenProvider provider)
-			// 	Annotations.Mark (provider);
 			Annotations.MarkScopeOfType (type, scope);
 		}
 
 		protected virtual void MarkSerializable (TypeDefinition type)
 		{
 			MarkDefaultConstructor (type, new DependencyInfo (DependencyKind.SerializationMethodForType, type));
-			if (!_context.IsFeatureExcluded ("deserialization"))
+			if (!_context.IsFeatureExcluded ("deserialization")) {
+				// this marks serialization ctor even for types that aren't [Serializable]. should we optimize this?
 				MarkMethodsIf (type.Methods, IsSpecialSerializationConstructor, new DependencyInfo (DependencyKind.SerializationMethodForType, type));
+			}
 		}
+
 		protected virtual TypeDefinition MarkType (TypeReference reference, DependencyInfo reason)
 		{
+			Debug.Assert (new DependencyKind [] {
+				DependencyKind.AlreadyMarkedType,
+				DependencyKind.BaseType,
+				DependencyKind.DeclaringTypeOfField,
+				DependencyKind.DeclaringTypeOfType,
+				DependencyKind.FieldType,
+				DependencyKind.GenericArgumentType, // generic instantiation typeref -> argument typ,
+				DependencyKind.DeclaringTypeOfMethod,
+				DependencyKind.InterfaceImplementationInterfaceType,
+				DependencyKind.GenericParameterConstraintType,
+				DependencyKind.TypeReferencedByAttribute,
+				DependencyKind.ParameterType,
+				DependencyKind.ReturnType,
+				DependencyKind.VariableType,
+				DependencyKind.IsInst,
+				DependencyKind.NewArr,
+				DependencyKind.OtherInstruction,
+				DependencyKind.Ldtoken,
+				DependencyKind.CatchType,
+				DependencyKind.CustomAttributeArgumentType,
+				DependencyKind.CustomAttributeArgumentValue,
+				DependencyKind.UnreachableBodyRequirement,
+				DependencyKind.DeclaringTypeOfCalledMethod,
+				DependencyKind.ElementType, // instantiation -> resolved typ,
+				DependencyKind.ModifierType, // volatile string -> system.volatil,
+				DependencyKind.AttributeType,
+				DependencyKind.TypeAccessedViaReflection,
+			}.Any (reason.kin));
 			if (reference == null)
 				return null;
 
-			// mark any generic parameters for the same reason
-			// that we mark the generic instantiation itself.
 			(reference, reason) = GetOriginalType (reference, reason);
 
 			if (reference is FunctionPointerType)
@@ -1360,54 +1177,16 @@ namespace Mono.Linker.Steps {
 				return null;
 			}
 
+			// TODO clean up the linker internal stuff
 			switch (reason.Kind) {
-			case DependencyKind.EntryType:
-				// we don't report a specific reason for an entry type.
-				// can get here for INitializeAssembly,
-				// or for xml/root types.
-				// can we assert that it was maybe already marked???
-				// TODO
-				if (!Annotations.IsMarked (type)) {
-					throw new Exception("WAT");
-				}
-				break;
-			case DependencyKind.BaseType:
-			case DependencyKind.DeclaringTypeOfField:
-			case DependencyKind.DeclaringTypeOfType:
-			case DependencyKind.FieldType:
-			case DependencyKind.GenericArgumentType: // generic instantiation typeref -> argument type
-			case DependencyKind.DeclaringTypeOfMethod:
-			case DependencyKind.InterfaceImplementationInterfaceType:
-			case DependencyKind.GenericParameterConstraintType:
-			case DependencyKind.TypeReferencedByAttribute:
-			case DependencyKind.ParameterType:
-			case DependencyKind.ReturnType:
-			case DependencyKind.VariableType:
-			case DependencyKind.IsInst:
-			case DependencyKind.NewArr:
-			case DependencyKind.Ldtoken:
-			case DependencyKind.CatchType:
-			case DependencyKind.CustomAttributeArgumentType:
-			case DependencyKind.CustomAttributeArgumentValue:
-			case DependencyKind.UnreachableBodyRequirement:
-			case DependencyKind.DeclaringTypeOfCalledMethod:
-			case DependencyKind.ElementType: // instantiation -> resolved type
-			case DependencyKind.ModifierType: // volatile string -> system.volatile
-			case DependencyKind.AttributeType:
-			case DependencyKind.TypeAccessedViaReflection:
-				Annotations.MarkTypeWithReason (reason, type);
+			case DependencyKind.AlreadyMarkedType:
+				Debug.Assert (Annotations.IsMarked (type));
 				break;
 			case DependencyKind.LinkerInternal:
 				Annotations.MarkTypeLinkerInternal (type);
 				break;
-			// since we can get here for generic arguments of methods, all
-			// the "method" dependencies need to be supported as well.
-			case DependencyKind.DirectCall:
-			case DependencyKind.VirtualCall:
-			case DependencyKind.Ldftn:
-				throw new Exception("shouldn't blame a typedef of generic method arg on the method's caller, but on generic method itself!");
 			default:
-				throw new NotImplementedException(reason.Kind.ToString());
+				Annotations.MarkTypeWithReason (type);
 			}
 
 			if (type.HasMethods) {
@@ -1430,6 +1209,7 @@ namespace Mono.Linker.Steps {
 					case DependencyKind.VariableType:
 					case DependencyKind.IsInst:
 					case DependencyKind.NewArr:
+					case DependencyKind.OtherInstruction:
 					case DependencyKind.Ldtoken:
 					case DependencyKind.CatchType:
 					case DependencyKind.CustomAttributeArgumentType:
@@ -1438,7 +1218,7 @@ namespace Mono.Linker.Steps {
 					// DeclaringTypeOfCalledMethod?
 					// ElementType?
 					// ModifierType?
-					case DependencyKind.EntryType:
+					case DependencyKind.AlreadyMarkedType:
 					case DependencyKind.ElementType:
 					case DependencyKind.AttributeType:
 					case DependencyKind.TypeAccessedViaReflection:
@@ -1473,10 +1253,10 @@ namespace Mono.Linker.Steps {
 			Tracer.Push (type);
 
 			MarkScope (type.Scope, type);
-MarkType (type.BaseType, new DependencyInfo (DependencyKind.BaseType, type));
-MarkType (type.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfType, type));
-MarkCustomAttributes (type, new DependencyInfo (DependencyKind.CustomAttribute, type));
-MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribute, type));
+			MarkType (type.BaseType, new DependencyInfo (DependencyKind.BaseType, type));
+			MarkType (type.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfType, type));
+			MarkCustomAttributes (type, new DependencyInfo (DependencyKind.CustomAttribute, type));
+			MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribute, type));
 
 			if (type.IsMulticastDelegate ()) {
 				MarkMulticastDelegate (type);
@@ -1485,11 +1265,11 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			if (type.IsSerializable ())
 				MarkSerializable (type);
 
-			// this has *some* logic for EventSource... but I think it's incomplete.
-			// it marks all static fields of Keywords/OpCodes/Tasks subclasses of an EventSource-derived type.
-			// don't we also need to keep the EventSource attribute (which gives the source name?)
-			// other logic keeps public&instance&property methods on types with EventDataAttribute.
-			// I don't think this is enough.
+			// marks all static fields of Keywords/OpCodes/Tasks subclasses of an EventSource-derived type.
+			// logic elsewhere keeps public instance property methods on types with [EventData]
+			// do we also keep the EventData attribute?
+			// don't we also need to keep the [EventSource] attribute (which gives it a name?)
+			// don't we need to also keep other EventSource-related attributes like [NonEvent]?
 			if (!_context.IsFeatureExcluded ("etw") && BCL.EventTracingForWindows.IsEventSourceImplementation (type, _context)) {
 				MarkEventSourceProviders (type);
 			}
@@ -1532,11 +1312,9 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 				_typesWithInterfaces.Add (type);
 
 			if (type.HasMethods) {
-				// recursively checks base methods. if any are from abstract class in a non-link assembly,
-				// it keeps methods that are overrides of these.
-				// TODO: ambiguous what we should blame.
-				// could blame declaring type, or could blame the base method with preserved scope.
-				// for now, let's blame the declaring type.
+				// TODO: what happened to ShouldMarkTypeStaticConstructor?
+
+				// for virtuals that must be preserved, blame the declaring type. could consider blaming the scope instead.
 				MarkMethodsIf (type.Methods, IsVirtualNeededByTypeDueToPreservedScope, new DependencyInfo (DependencyKind.VirtualNeededDueToPreservedScope, type));
 
 				if (_context.IsFeatureExcluded ("deserialization"))
@@ -1589,16 +1367,8 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			if (!assembly.HasCustomAttributes)
 				return;
 
-			foreach (CustomAttribute attribute in assembly.CustomAttributes) {
-				// the linker doesn't currently mark an assembly other than by marking its mainmodule,
-				// which is used to check if the assembly is marked.
-				// therefore we blame the assembly-level attributes on the main module as well,
-				// even though they are technically on the assembly, not the main module.
-				// this is likely safe in a world without multi-module assemblies.
-				// the provider is definitely the assembly though...
-				// let's fix this elsewhere.
+			foreach (CustomAttribute attribute in assembly.CustomAttributes)
 				_assemblyLevelAttributes.Enqueue (new AttributeProviderPair (attribute, assembly));
-			}
 		}
 
 		TypeDefinition GetDebuggerAttributeTargetType (CustomAttribute ca, AssemblyDefinition asm)
@@ -1737,7 +1507,7 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 					} else {
 						FieldDefinition field = GetField (type, realMatch);
 						if (field != null) {
-							// we keep DDA fields without necessarily keeping the attribute. mark it as an entry.
+							// DebuggerDisplayAttribute fields are kept even if the attribute is not. mark them as an entry for now.
 							_context.MarkingHelpers.MarkEntryField (field, new EntryInfo (EntryKind.UnmarkedAttributeDependency, attribute, field));
 							continue;
 						}
@@ -1745,6 +1515,7 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 						PropertyDefinition property = GetProperty (type, realMatch);
 						if (property != null) {
 							if (property.GetMethod != null) {
+								// TODO: don't we hit the same DDA bug here? is the attribute guaranteed to be kept in the graph?
 								MarkMethod (property.GetMethod, new DependencyInfo (DependencyKind.MethodReferencedByAttribute, attribute));
 
 							}
@@ -1755,12 +1526,12 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 						}
 					}
 
-					// oh.. this is if we don't match any members explicitly.
 					while (type != null) {
 						_context.LogMessage("warning: non-understood DebuggerDisplayAttribute: " + attribute.ToString());
 						MarkMethods (type, new DependencyInfo (DependencyKind.MethodKeptForNonUnderstoodAttribute, attribute));
 						MarkFields (type, includeStatic: true, new DependencyInfo (DependencyKind.FieldReferencedByAttribute, attribute));
-						// this seems like it will miss generic parameters.
+						Debug.Assert (!(type.BaseType is GenericInstanceType));
+						// this logic would miss generic parameters used in methods/fields for generic types
 						type = type.BaseType?.Resolve ();
 					}
 					return;
@@ -1963,11 +1734,6 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			return false;
 		}
 
-		// TODO:
-		// clean this up. we shouldn't mark ISerializable-related ctor
-		// if it doesn't implement ISerializable... should we?
-		// conceptually this is part of the ISerializable interface.
-		// for now, just mark as untracked dependency.
 		static bool IsSpecialSerializationConstructor (MethodDefinition method)
 		{
 			if (!method.IsInstanceConstructor ())
@@ -2075,9 +1841,6 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		void MarkEventSourceProviders (TypeDefinition td)
 		{
-			// marks all static fields of a nestedtype in an EventSource-derived type,
-			// that is called
-			// "Keywords", "Tasks", or "Opcodes";
 			foreach (var nestedType in td.NestedTypes) {
 				if (BCL.EventTracingForWindows.IsProviderName (nestedType.Name))
 					MarkStaticFields (nestedType, new DependencyInfo (DependencyKind.EventSourceProviderField, td));
@@ -2110,42 +1873,27 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		protected (TypeReference, DependencyInfo) GetOriginalType (TypeReference type, DependencyInfo reason)
 		{
-			// why is this a while loop?
 			while (type is TypeSpecification specification) {
+				// blame the type reference (which isn't marked) on the original reason
 				_context.MarkingHelpers.MarkTypeSpec (specification, reason);
+				// blame the outgoing element type on the specification
+				(type, reason) = (specification.ElementType, new DependencyInfo (DependencyKind.ElementType, specification));
 				if (type is GenericInstanceType git) {
-					// record an edge from whatever got here to the typeref. then this call will do from ref -> argument.
 					MarkGenericArguments (git);
-					if (git.ElementType is TypeSpecification) {
-						throw new Exception("HUH?");
-					}
+					// TODO: why is this in a while loop?
+					Debug.Assert (!(type is TypeSpecification));
 				}
 
-				if (type is IModifierType mod) {
-					// similarly, the modified type is never marked.
-					// we blame the reason that the modified type was marked,
-					// for moth the modifier type and the type that was modified.
+				if (type is IModifierType mod)
 					MarkModifierType (mod);
-				}
 
-
-				// something needs to mark the fnptr.
 				if (type is FunctionPointerType fnptr) {
 					MarkParameters (fnptr);
 					MarkType (fnptr.ReturnType, new DependencyInfo (DependencyKind.ReturnType, fnptr));
-					break; // FunctionPointerType is the original type
+					break;
 				}
 
-				// for T<F>, this is T<>.
-				// for arrays, I'm guessing this is the array's element type, not the array type constructor:
-				// S[] -> S. not S[] -> []`1
-
-				// at this point, we will have an edge from the tyespec to the generic arguments
-				// but we still need one from the originator to the typespec,
-				// and from the typespec to the element type.
-				// the element type will be marked in MarkType, so just pass along a new reason.
-				// the originator -> typespec must be handled here.
-				(type, reason) = (specification.ElementType, new DependencyInfo (DependencyKind.ElementType, specification));
+				type = specification.ElementType;
 			}
 
 			return (type, reason);
@@ -2164,30 +1912,13 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		void MarkModifierType (IModifierType mod)
 		{
-			// marking the modifier type...
 			MarkType (mod.ModifierType, new DependencyInfo (DependencyKind.ModifierType, mod));
 		}
 
 		void MarkGenericArguments (IGenericInstance instance)
 		{
-			foreach (TypeReference argument in instance.GenericArguments) {
-				// generic inst should never be marked. so generic arg is not a valid reason.
-				// how do we track that a generic argument of a base type is kept?
-				// it could be anything - generic arg of declaring type
-				// generic arg of return type
-				// generic arg of parameter type
-				// what do we do here!?
-				// forget about generics.
-				// could mark it as generic argument of the uninstantiated generic?
-				// but then everything that uses a generic instantiation would lead to all possible parameters...
-				// which isn't good.
-				// the linker is smarter than that.
-				// so, blame the immediate "callsite", not the virtual that everyone uses.
-				// there IS a direct path.
+			foreach (TypeReference argument in instance.GenericArguments)
 				MarkType (argument, new DependencyInfo (DependencyKind.GenericArgumentType, instance));
-			}
-			// problem: the instance is a typeref, not a typedef necessarily.
-			// maybe that's OK! just try it. :)
 
 			MarkGenericArgumentConstructors (instance);
 		}
@@ -2213,7 +1944,6 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 					continue;
 
 				var argument_definition = argument.Resolve ();
-				// this will have kind generic argument constructor
 				MarkDefaultConstructor (argument_definition, new DependencyInfo (DependencyKind.DefaultCtorForNewConstrainedGenericArgument, instance));
 			}
 		}
@@ -2272,11 +2002,10 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			if (list == null)
 				return;
 
-			// this simply doesn't happen. what to do here?
+			// this simply doesn't happen. what to do here? just blame the method.
 			MarkMethodCollection (list, new DependencyInfo (DependencyKind.PreservedMethod, method));
 		}
 
-		// if is enum, we include static fields of value type.
 		protected bool MarkFields (TypeDefinition type, bool includeStatic, DependencyInfo reason, bool markBackingFieldsOnlyIfPropertyMarked = false)
 		{
 			if (!type.HasFields)
@@ -2325,7 +2054,6 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			if (!type.HasFields)
 				return;
 
-			// used to mark all static fields of a type who
 			foreach (FieldDefinition field in type.Fields) {
 				if (field.IsStatic)
 					MarkField (field, reason);
@@ -2355,61 +2083,24 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		protected virtual MethodDefinition MarkMethod (MethodReference reference, DependencyInfo reason)
 		{
-			if (reference.ToString().Contains("Testgenerics")) {
-				Console.WriteLine("here");
-			}
-			if (reference.ToString() == "System.Void rr.GenericClass`1<rr.GenericArg>::.ctor()") {
-				Console.WriteLine("hmm");
-			}
-
-			// if it's a generic method, this will mark generic arguments, and the method reference.
-			// the reference will go to the ElementType, which I think is the method on the type, without the
-			// method generic argument.
-			// the reason becomes a ElementMethod dependency from the original reference to the element type
-			// (which is the uninstantiated generic methodref, still possibly on a genericinst type).
 			(reference, reason) = GetOriginalMethod (reference, reason);
-
-			// but the method could still be on a generic type.
 
 			if (reference.DeclaringType is ArrayType)
 				return null;
 
 			Tracer.Push (reference);
-
 			if (reference.DeclaringType is GenericInstanceType) {
-				// for a generic instance, the reference to the instantiation doesn't exist
-				// as a definition. there's nothing to mark.
-				// yet the generic instantiation will pull in other marked things.
-				// and these need a reason.
-				// both the generic type and the arguments will get marked.
-				// the declaring type will exist.
-				// so that's fine... problem is that the source method reference might not exist.
-				// resolving to its definition removes the generic stuff.
-				// so maybe we need to resolve it before doing this?
-				// TODO: what if the source is null?
-				// we'll get an error! :)
-				// if we can't resolve the original method,
-				// then there's no reason to blame it.
-				// same as field logic.
-
-				// if it's a methodref on a generic instance type, we mark the declaring type (a reference) as this methodref's
-				// declaring type.
-				// but that puts the methodref in the graph, no?
-
-				// need to make sure the reference has a reason to be in the graph, even though it's not actually marked.
+				// blame the method reference on the original reason without marking it
 				_context.MarkingHelpers.MarkMethodOnGenericInstance (reference, reason);
-				// this will put the methodref in the graph, as a source.
-				// but it will never be there with a reason.
 				MarkType (reference.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfMethod, reference));
-				// want to mark the resolved method definition as a dependency of the reference.
+				// mark the resolved method definition as a dependency of the reference
 				reason = new DependencyInfo (DependencyKind.MethodOnGenericInstance, reference);
 			}
 
-			MethodDefinition method = reference.Resolve ();
-			// ... wait, what if it's a methodimpl? does this include generic method parameters?
-
 //			if (IgnoreScope (reference.DeclaringType.Scope))
 //				return;
+
+			MethodDefinition method = reference.Resolve ();
 
 			try {
 				if (method == null) {
@@ -2432,10 +2123,6 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 		AssemblyDefinition ResolveAssembly (IMetadataScope scope)
 		{
 			AssemblyDefinition assembly = _context.Resolve (scope);
-			if (!Annotations.IsProcessed (assembly)) {
-				// oh, can get here for example when early processing one assembly,
-				// when it references another that hasn't been marked yet.
-			}
 			MarkAssembly (assembly);
 			return assembly;
 		}
@@ -2443,18 +2130,15 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 		protected (MethodReference, DependencyInfo) GetOriginalMethod (MethodReference method, DependencyInfo reason)
 		{
 			while (method is MethodSpecification specification) {
-				if (method is GenericInstanceMethod gim) {
-					// TODO: this needs to be updated!
-					MarkGenericArguments (gim);
-				}
-
-				// MarkMethod is going to now blame the methodspec.
-				// we need to add an edge from the originator of the methodspec to it.
+				// blame the method reference (which isn't marked) on the original reason
 				_context.MarkingHelpers.MarkMethodSpec (specification, reason);
+				// blame the outgoing element method on the specification
 				(method, reason) = (specification.ElementMethod, new DependencyInfo (DependencyKind.ElementMethod, specification));
-				if (method is MethodSpecification) {
-					throw new Exception("huh?");
-				}
+				if (method is GenericInstanceMethod gim)
+					MarkGenericArguments (gim);
+
+				// TODO: why is this inside of a while loop?
+				Debug.Assert (!(method is MethodSpecification));
 			}
 
 			return (method, reason);
@@ -2462,23 +2146,8 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		protected virtual void ProcessMethod (MethodDefinition method, DependencyInfo reason)
 		{
-			// note the method call, even if we have already processed it.
-
-			if (method.ToString().Contains("Testgenerics")) {
-				Console.WriteLine("here");
-			}
-
-			// problem:
-			// some logic (what to mark it for, incoming edge) must be done for every caller.
-			// some must run only once per definition.
-			// we want to "mark" the method body as dangerous only once.
-			// but we call Annotations.Mark on the method every time, currently.
-			// what to do?
-			// we mark for inclusion before.
-			// once it's marked, it's in the graph.
-
-			// TODO: replace this with a reason!
-			// need to mark the method call EVEN if we have already processed the method!
+			// a method may be marked multiple times for different reasons, even though most
+			// of the processing logic happens only once.
 			switch (reason.Kind) {
 			case DependencyKind.DirectCall:
 				Annotations.MarkMethodCall ((MethodDefinition)reason.Source, method);
@@ -2495,13 +2164,16 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			case DependencyKind.CctorForField:
 				Annotations.MarkStaticConstructorForField ((FieldDefinition)reason.Source, method);
 				break;
-			case DependencyKind.EntryMethod:
+//			case DependencyKind.EntryMethod:
 				// don't track an entry reason. if we got here, there is already an entry reason.
 				// just mark the NODE as an entry node, without a particular reason for being an entry node.
 				// don't say UNKNOWN.
 				// just ASSERT that the method already has an entry reason.
 				// and mark it as an entry node in the annotations.
-				Annotations.MarkEntryMethod (method);
+//				Annotations.MarkEntryMethod (method);
+//				break;
+			case DependencyKind.AlreadyMarkedMethod:
+				Debug.Assert (Annotations.IsMarked (method));
 				break;
 			case DependencyKind.OverrideOnInstantiatedType:
 				Annotations.MarkMethodOverrideOnInstantiatedType ((TypeDefinition)reason.Source, method);
@@ -2532,8 +2204,8 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			case DependencyKind.AttributeConstructor:
 			case DependencyKind.AttributeProperty:
 			case DependencyKind.VirtualNeededDueToPreservedScope:
-			case DependencyKind.PreserveDependency:
-			case DependencyKind.MethodForType:
+			case DependencyKind.PreserveDependencyMethod:
+			case DependencyKind.MethodOfType:
 			case DependencyKind.ElementMethod:
 			case DependencyKind.EventMethod:
 			case DependencyKind.DefaultCtorForNewConstrainedGenericArgument:
@@ -2543,6 +2215,10 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			default:
 				throw new NotSupportedException ("don't yet support the reason kind " + reason.Kind);
 			}
+
+			// usually, MarkType of the DeclaringType runs only once per method.
+			// as a special case, the declaring type of a "DirectCall" or "VirtualCall" method
+			// 
 
 			Tracer.Push (method);
 			// marktype
@@ -2556,7 +2232,8 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			case DependencyKind.Override:
 			case DependencyKind.OverrideOnInstantiatedType: // in this case, the declaring type would already have been marked anyway.
 			case DependencyKind.MethodAccessedViaReflection: // this should behave similarly to the declaringtypeofcalledmethod which may trigger a cctor.
-			case DependencyKind.EntryMethod:
+//			case DependencyKind.EntryMethod:
+			case DependencyKind.AlreadyMarkedMethod:
 			case DependencyKind.SerializationMethodForType:
 			case DependencyKind.MethodReferencedByAttribute:
 			case DependencyKind.MethodKeptForNonUnderstoodAttribute:
@@ -2578,8 +2255,8 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			case DependencyKind.AttributeConstructor:
 			case DependencyKind.AttributeProperty:
 			case DependencyKind.VirtualNeededDueToPreservedScope:
-			case DependencyKind.PreserveDependency:
-			case DependencyKind.MethodForType:
+			case DependencyKind.PreserveDependencyMethod:
+			case DependencyKind.MethodOfType:
 			case DependencyKind.ElementMethod:
 			case DependencyKind.EventMethod:
 			case DependencyKind.DefaultCtorForNewConstrainedGenericArgument:
@@ -2607,7 +2284,7 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			MarkGenericParameterProvider (method);
 
 			if (method.IsInstanceConstructor ())
-				MarkRequirementsForInstantiatedTypes (method.DeclaringType, new DependencyInfo (DependencyKind.ConstructedType, method));
+				MarkRequirementsForInstantiatedTypes (method.DeclaringType, new DependencyInfo (DependencyKind.InstanceCtor, method));
 
 			if (method.IsConstructor) {
 				if (!Annotations.ProcessSatelliteAssemblies && KnownMembers.IsSatelliteAssemblyMarker (method))
@@ -2619,8 +2296,9 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 			if (method.HasParameters) {
 				foreach (ParameterDefinition pd in method.Parameters) {
+					// parameters and return types are not recorded separately since they are always marked for a method.
+					// instead, blame the method directly.
 					MarkType (pd.ParameterType, new DependencyInfo (DependencyKind.ParameterType, method));
-					// blame the same reason that the method was marked.
 					MarkCustomAttributes (pd, new DependencyInfo (DependencyKind.ParameterAttribute, method));
 					MarkMarshalSpec (pd, new DependencyInfo (DependencyKind.ParameterMarshalSpec, method));
 				}
@@ -2669,56 +2347,20 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			if (Annotations.IsInstantiated (type))
 				return;
 
-			// switch (reason) {
-			// case DependencyKind.NewObj:
-			// 	Annotations.MarkInstantiatedByCalledConstructor ((MethodDefinition)reason.source, type);
-			// 	break;
-			// 	Annotations.MarkInstantiatedUntracked (type);
-			// 	break;
-			// default:
-			// 	throw new NotImplementedException (reason.kind);
-			// }
-			// actually, don't track whether a type is instantiated in the graph.
-			// just track method -> method dependency from the ctor to the method.
-//			Annotations.MarkInstantiated (type);
-			switch (reason.Kind) {
-			case DependencyKind.ConstructedType:
-				// the type being marked will have a reason it was marked, and a reason it was instantiated.
-				// record whichever path is shorter.
-				// call to cctor -> instantiated -> overrides
+			Debug.Assert (new DependencyKind [] {
+				DependencyKind.InstanceCtor,
+				DependencyKind.InstantiatedInterface,
+				DependencyKind.InstantiatedValueType,
+				DependencyKind.InstantiatedFullyPreservedType,
+				DependencyKind.AlwaysInstantiatedType
+			}.Contains (reason.Kind));
+
+			if (reason.Kind == DependencyKind.InstanceCtor) {
+				// report types instantiated by a dependency on an instance ctor
+				// so that the dependency recorder may handle these specially.
 				Annotations.MarkInstantiatedByConstructor ((MethodDefinition)reason.Source, type);
-				// TODO: if we don't track instantiations separately, the cctor -> type dependency
-				// will be the same for instantiations as it is for the declaringtype of the marked cctor.
-				// maybe that's not a problem - but it can result in
-				// overrides of instantiated types getting blamed on types, and then not citing the instantiation
-				// reason but instead just citing the type's mark reason.
-				// instantiated implies marked (is stronger than marked)
-				// any instantiation will also be marked.
-				// instantiations add extra dependencies on top of marked types.
-				// we should show those extra dependencies as resulting from whatever
-				// caused the type to actually be instantiated.
-				// some types always get those dependencies, whether or not they are instantiated.
-				// so for some types, instantiation means the same thing as just being marked.
-				// we should not treat those cases specially, and instead show the instantiation reqs as
-				// coming from the type being marked.
-				// for types that aren't always instantiated:
-				// some dependencies are:
-				//   only when instantiated: 
-				//   whenever marked:
-				//   instantiated or marked.
-				break;
-			case DependencyKind.InstantiatedInterface: // same as below...
-			case DependencyKind.InstantiatedValueType: // no edge necessary (marktype took care of it)
-			case DependencyKind.InstantiatedFullyPreservedType: // same
-			case DependencyKind.AlwaysInstantiatedType: // same
-				// this is the only untracked dependency we use. this is because the dependency kinds above
-				// just specify that certain types are always considered instantiated.
-				// we will simply record their overrides as being on the types.
-				// we don't track the instantiation sites.
+			} else {
 				Annotations.MarkInstantiatedUntracked (type);
-				break;
-			default:
-				throw new NotImplementedException (reason.Kind.ToString ());
 			}
 
 			MarkInterfaceImplementations (type);
@@ -2777,14 +2419,13 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 					return;
 
 				var baseType = method.DeclaringType.BaseType.Resolve ();
-				// what if this is generic???
 				if (!MarkDefaultConstructor (baseType, new DependencyInfo (DependencyKind.BaseDefaultCtorForStubbedMethod, method)))
 					throw new NotSupportedException ($"Cannot stub constructor on '{method.DeclaringType}' when base type does not have default constructor");
 
 				break;
 
 			case MethodAction.ConvertToThrow:
-						MarkAndCacheConvertToThrowExceptionCtor (new DependencyInfo (DependencyKind.UnreachableBodyRequirement, method));
+				MarkAndCacheConvertToThrowExceptionCtor (new DependencyInfo (DependencyKind.UnreachableBodyRequirement, method));
 				break;
 			}
 		}
@@ -2900,16 +2541,16 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		protected void MarkProperty (PropertyDefinition prop, DependencyInfo reason)
 		{
-			// put properties into the graph, even though we don't mark them separately.
+			// record the property without marking it in Annotations
 			_context.MarkingHelpers.MarkProperty (prop, reason);
-			// TODO: isn't it a bug that this doesn't keep property methods???
+			// consider making this more similar to MarkEvent and mark property methods?
 			MarkCustomAttributes (prop, new DependencyInfo (DependencyKind.CustomAttribute, prop));
 			DoAdditionalPropertyProcessing (prop);
 		}
 
-		// TODO: why not handle propertie and events the same way?
 		protected virtual void MarkEvent (EventDefinition evt, DependencyInfo reason)
 		{
+			// record the event without marking it in Annotations.
 			_context.MarkingHelpers.MarkEvent (evt, reason);
 			MarkCustomAttributes (evt, new DependencyInfo (DependencyKind.CustomAttribute, evt));
 			MarkMethodIfNotNull (evt.AddMethod, new DependencyInfo (DependencyKind.EventMethod, evt));
@@ -2926,9 +2567,6 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			MarkMethod (method, reason);
 		}
 
-		// may be called multiple times. can exit early, if it's unreachable.
-		// gets parsed if forceparse, or it's parse and link/copy, etc.
-		// and the method is marked.
 		protected virtual void MarkMethodBody (MethodBody body)
 		{
 			if (_context.IsOptimizationEnabled (CodeOptimizations.UnreachableBodies, body.Method) && IsUnreachableBody (body)) {
@@ -2944,12 +2582,9 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 				if (eh.HandlerType == ExceptionHandlerType.Catch)
 					MarkType (eh.CatchType, new DependencyInfo (DependencyKind.CatchType, body.Method));
 
-			// we get here for MarkMethodBody whenever it's reachable.
-			// with unreachablebodies, that means it's static or instantiated or not worth converting to throw
 			foreach (Instruction instruction in body.Instructions)
 				MarkInstruction (instruction, body.Method);
 
-			// interfaces needed by body stack
 			MarkInterfacesNeededByBodyStack (body);
 
 			MarkReflectionLikeDependencies (body);
@@ -2976,12 +2611,10 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 			if (implementations == null)
 				return;
 
-			// this may not 
 			foreach (var (implementation, type) in implementations)
 				MarkInterfaceImplementation (implementation, type);
 		}
 
-		// the "reason" we mark an instruction is that we decided to parse the body, and it's reachable (if the unreachable bodies opt is enabled)
 		protected virtual void MarkInstruction (Instruction instruction, MethodDefinition method)
 		{
 			switch (instruction.OpCode.OperandType) {
@@ -2989,48 +2622,45 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 				MarkField ((FieldReference) instruction.Operand, new DependencyInfo (DependencyKind.FieldAccess, method));
 				break;
 			case OperandType.InlineMethod:
-				DependencyInfo reason;
-				switch (instruction.OpCode.Code) {
-				case Code.Jmp:
-				case Code.Call:
-				case Code.Newobj:
-					reason = new DependencyInfo (DependencyKind.DirectCall, method);
-					break;
-				case Code.Callvirt:
-					reason = new DependencyInfo (DependencyKind.VirtualCall, method);
-					break;
-				case Code.Ldvirtftn:
-					reason = new DependencyInfo (DependencyKind.Ldvirtftn, method);
-					break;
-				case Code.Ldftn:
-					reason = new DependencyInfo (DependencyKind.Ldftn, method);
-					break;
-				default:
-					throw new Exception("what instruction is this?!");
-				}
-				MarkMethod ((MethodReference) instruction.Operand, reason);
+			{
+				DependencyKind dependencyKind = instruction.OpCode.Code switch {
+					Code.Jmp => DependencyKind.DirectCall,
+					Code.Call => DependencyKind.DirectCall,
+					Code.Newobj => DependencyKind.DirectCall,
+					Code.Callvirt => DependencyKind.VirtualCall,
+					Code.Ldvirtftn => DependencyKind.Ldvirtftn,
+					Code.Ldftn => DependencyKind.Ldftn,
+					_ => throw new Exception ("unexpected opcode " + instruction.OpCode)
+				};
+				MarkMethod ((MethodReference) instruction.Operand, new DependencyInfo (dependencyKind, method));
 				break;
+			}
 			case OperandType.InlineTok:
-				// only ldtoken takes an inlinetok.
+			{
 				object token = instruction.Operand;
-				if (instruction.OpCode.Code != Code.Ldtoken) {
-					throw new Exception("unexpected instruction " + instruction.OpCode);
-				}
+				if (instruction.OpCode.Code != Code.Ldtoken)
+					throw new Exception ("unexpected opcode " + instruction.OpCode);
+
+				var reason = new DependencyInfo (DependencyKind.Ldtoken, method);
 				if (token is TypeReference typeReference)
-					MarkType (typeReference, new DependencyInfo (DependencyKind.Ldtoken, method));
+					MarkType (typeReference, reason);
 				else if (token is MethodReference methodReference)
-					// TODO: is inlinetok guaranteed to be a call?
-					// NO! it's a ldtoken.
-					MarkMethod (methodReference, new DependencyInfo (DependencyKind.Ldtoken, method));
+					MarkMethod (methodReference, reason);
 				else
-					MarkField ((FieldReference) token, new DependencyInfo (DependencyKind.Ldtoken, method));
+					MarkField ((FieldReference) token, reason);
 				break;
+			}
 			case OperandType.InlineType:
-				if (instruction.OpCode.Code == Code.Isinst) {
-					MarkType ((TypeReference) instruction.Operand, new DependencyInfo (DependencyKind.IsInst, method));
-				} else if (instruction.OpCode.Code == Code.Newarr) {
-					MarkType ((TypeReference) instruction.Operand, new DependencyInfo (DependencyKind.NewArr, method));
-				}
+			{
+				DependencyKind dependencyKind = instruction.OpCode.Code switch {
+					Code.Isinst => DependencyKind.IsInst,
+					Code.Newarr => DependencyKind.NewArr,
+					_ => DependencyKind.OtherInstruction,
+				};
+				if (dependencyKind == DependencyKind.OtherInstruction)
+					_context.LogMessage ("untracked instruction " + instruction.ToString ());
+				MarkType ((TypeReference) instruction.Operand, new DependencyInfo (dependencyKind, method));
+			}
 				break;
 			default:
 				break;
@@ -3079,12 +2709,15 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 
 		protected virtual void MarkInterfaceImplementation (InterfaceImplementation iface, TypeDefinition type)
 		{
-			// can get here from looking at interface impls on a type,
-			// from looking at explicit overrides (methodimpls) on a method (signifying an interface implementation)
-			// or even from a method body (where we mark interface implementations needed by the body stack)
+			// we mark interface implementations for a number of reasons:
+			//   methods with overrides (explicit interface implementations)
+			//   types with interface implementations
+			//   method bodies with interfaces implementations required by the body stack
+			// we will always blame the type that has the interfaceimpl, expecting the type itself to get marked for other reasons.
+			// we should assert that this is true in debug mode.
+			// blame the interface type on the interfaceimpl itself.
 			MarkCustomAttributes (iface, new DependencyInfo (DependencyKind.CustomAttribute, iface));
 			MarkType (iface.InterfaceType, new DependencyInfo (DependencyKind.InterfaceImplementationInterfaceType, iface));
-			// Annotations.Mark (iface); // TODO: this can be its own node!! need to track dependency from type & interface -> ifaciimpl
 			Annotations.MarkInterfaceImplementation (iface, type);
 		}
 
@@ -3211,55 +2844,7 @@ MarkSecurityDeclarations (type, new DependencyInfo (DependencyKind.CustomAttribu
 #endif
 
 				_context.ReflectionPatternRecorder.UnrecognizedReflectionAccessPattern (MethodCalling, MethodCalled, message);
-
-				// TODO: move this out to where the method is actually marked.
-				// this marks the target as dangerous so it will show up
-				// TODO: eventually, all the APIs that we even attempt to analyze will already be considered dangerous,
-				// and we can get rid of this line.
-
-				// _context.Annotations.MarkDangerousMethod (MethodCalled);
-				// calling method should be marked dangerous, as it contains the dangerous callsite.
-
-				// TODO: fix this bug.
-				// marking it as dangerous is too late, because it has already been inserted into the graph.
-				//_context.Annotations.MarkDangerousMethod (MethodCalling);
-				// this sets up an edge to the dangerous reflection method.
-
-				// marking ANYTHING as dangerous only shows up in the call graph
-				// if it's marked dangerous BEFORE anything else references it.
-				// otherwise the "dangerous" bit is not set.
-				// and there's no way to set it in a collection.
-				// options:
-				// 1. only insert into the graph when we know.
-				//    - if methods can be "dangerous", we must only insert them into the graph
-				//      after we know whether they are dangerous.
-				//      - if base APIs are "dangerous", only insert into graph after checking if it's a reflection API
-				//      - if callsites are "dangerous", only insert a method into graph after processing its body
-				//    - don't build graph until we know all of the properties.
-				//      prevents building the graph incrementally
-				// 2. allow mutating the graph in restricted ways as we go
-				//    - 
-				// _context.Annotations.MarkDangerousMethod (MethodCalling);
-				// reflection data!
-				// pass the dangerous data into this.
-				// 
-
-				// solution:
-				// consider the "data" to be the union of all datas that reach this method.
-				// where data INCLUDES a call chain suffix of length 1 (one callsite)
-				// that means, that we track separately the possible data that can reach a dangerous method
-				// for each direct callsite.
-				// DATA = (callsite, possible values)
-				// pass this data along to the analysis.
-				// if any one is a dangerous value, ERROR about the GetType call for that callsite.
-				// one unique error per dangerous datum.
-				// it's a lattice of sets containing elements like (callsite, ppossible values)
-				// not sure how the lattice factors over callsites and values
-				// this says a dangerous data reached this callsite.
-				// TODO: enhance unknown kind. for now, tracking everything as unknown.
-				// eventually, should flow nicer errors to this.
 				var reflectionData = new ReflectionData { kind = ReflectionDataKind.Unknown };
-
 				_context.Annotations.MarkUnanalyzedReflectionCall (MethodCalling, MethodCalled, InstructionIndex, reflectionData);
 			}
 

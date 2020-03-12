@@ -10,17 +10,67 @@ namespace Mono.Linker
 
 	// TODO: use low bit or something to denote reasons that are final?
 	public enum DependencyKind {
-		DirectCall, // method -> method
-		VirtualCall, // method -> method
+		// MarkEntireType:
+		// these are used when marking members of an entire type.
+		// maybe collapse them into one?
+		// they indicate that the entire type is to be marked.
+		// type -> member
+			NestedType, // type -> type. used for marking entire types.
+			MethodOfType, // type -> method
+				// used for MarkEntireType (which keeps all methods on the type.)
+			PropertyOfType, // type -> method
+			// modified by CustomAttribute
+			EventOfType, // type -> method
+
+		// PreserveDependencyAttribute
+		// maybe collapse these into one.
+			// note that without KeepDependencyAttributes, the attributes themselves don't get marked,
+			// but we include them in the dependency graph anyway.
+			PreserveDependencyType, // customattribute -> type
+			PreserveDependencyField, // customattribute -> field
+			PreserveDependencyMethod, // customattribute -> method
+				// slight problem: the attribute might never be marked.
+
+		// reflection detection
+			EventAccessedViaReflection,
+			FieldAccessedViaReflection,
+			PropertyAccessedViaReflection, // modified by CustomAttribute
+			MethodAccessedViaReflection, // method -> method, assume it is called from the same method that accesses it.
+				// also used for property getters/setters whose properties are accessed via reflection
+			TypeAccessedViaReflection,
+
+		// unanalyzed reflection
+			// handled by ReflectionData and MarkUnanalyzedReflectionCall.
+			// no "dependency" object for this.
+			// maybe "contains unsafe reflection call"?
+			// no... the callsite shouldn't be part of this graph.
+
+		// interface implementations
+
+		// instructions
+			DirectCall, // method -> method
+			VirtualCall, // method -> method	
+			Ldvirtftn, // method is referenced in an instruction that does ldvirtftn
+			Ldftn,
+			IsInst,
+			NewArr,
+			Ldtoken, // type or field or method
+			OtherInstruction, // non-understood instructions?
+
+
+		// tracking instantiated types
+		// the special case is ConstructedType,
+			InstanceCtor, // cctor method -> type
+			InstantiatedInterface,
+			InstantiatedValueType, // we mark the type instantiated because it is a value type (no source)
+			InstantiatedFullyPreservedType, // we mark fully preserved types as instantiated (no source)
+			AlwaysInstantiatedType, // we always mark certain types as instantiated (no source)
+
+
 		TriggersCctorThroughFieldAccess, // method -> cctor // this method may trigger the cctor of the specified type.
 		TriggersCctorForCalledMethod, // method -> cctor
-		MethodAccessedViaReflection, // method -> method, assume it is called from the same method that accesses it.
-		// also used for property getters/setters whose properties are accessed via reflection
-		FieldAccessedViaReflection,
-		TypeAccessedViaReflection,
 
 		OverrideOnInstantiatedType, // type -> method
-		ConstructedType, // cctor method -> type
 
 		PreservedMethod, // preserved_methods in Annotations.
 			// not used for illink. but for monolinker calendarstep.
@@ -28,23 +78,13 @@ namespace Mono.Linker
 			// type -> method, or method -> method
 
 		// why do we instantiate types?
-		InstantiatedValueType, // we mark the type instantiated because it is a value type (no source)
-		InstantiatedInterface,
-		InstantiatedFullyPreservedType, // we mark fully preserved types as instantiated (no source)
-		AlwaysInstantiatedType, // we always mark certain types as instantiated (no source)
 		MethodForInstantiatedType,
 		GenericArgumentType, // might be used for generic arg of types or methods.
-		Ldvirtftn, // method is referenced in an instruction that does ldvirtftn
-		Ldftn,
-		IsInst,
-		NewArr,
-		Ldtoken, // type or field or method
 		CatchType,
 
 		CustomAttributeArgumentType, // this depends on either a CustomAttribute or a SecurityAttribute. both implement ICustomAttribute, so we use the same helper.
 		CustomAttributeArgumentValue, // same as above
 
-		EventAccessedViaReflection,
 
 
 		// some dependency kinds that we don't necessarily want to report.
@@ -90,8 +130,6 @@ namespace Mono.Linker
 		FieldForType, // type -> field.
 			// used for marking fields of valuetypes, or explicit layout classes, also static fields for enums
 			// also for MarkEntireType (which may be entry, user dependency, etc)
-		MethodForType,
-			// used for MarkEntireType (which keeps all methods on the type.)
 		CctorForField, // field -> method.
 			// marks cctor kept for a field in general, for fields that don't have a more explicit reason to be kept.
 		MethodForSpecialType, // method is kept for type-specific logic
@@ -124,13 +162,11 @@ namespace Mono.Linker
 			// used for methods, etc. also for types
 		AttributeConstructor,
 		AttributeProperty,
-		PreserveDependency,
 
 
-		PropertyAccessedViaReflection, // modified by CustomAttribute
-		PropertyOfType, // modified by CustomAttribute
+
+
 		PropertyOfPropertyMethod, // modified by CustomAttribute
-		EventOfType,
 		EventOfEventMethod,
 		EventMethod, // marking a method because its event was marked
 
@@ -203,12 +239,6 @@ namespace Mono.Linker
 
 		Untracked, // () -> *
 		FieldType,
-		EntryMethod, // () -> method
-		EntryType, // () -> type
-		EntryField, // () -> field
-		NestedType, // type -> type. used for marking entire types.
-		UserDependencyType, // customattribute -> type
-		UserDependencyField, // customattribute -> field
 
 		// if a type derives from EventSource, it's an eventsource implementation.
 		// we keep all static fields on event source providers that are nested types of the implementation.
@@ -226,6 +256,11 @@ namespace Mono.Linker
 		DisablePrivateReflectionDependency, // something needed for the DisablePrivateReflectionAttribute.
 			// currently used for default ctor of DisablePrivateReflection attribute, when that is marked.
 	// this attribute type gets marked whenever there are any "indirectly called" methods (UserDependency/Reflectionn/XML)
+
+		AlreadyMarkedType, // MarkType for a type that was already marked (InitializeType)
+		AlreadyMarkedField,
+		AlreadyMarkedMethod,
+		
 	}
 
 	readonly public struct DependencyInfo : IEquatable<DependencyInfo> {

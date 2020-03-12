@@ -113,5 +113,9 @@ namespace Mono.Linker {
 			_context.Annotations.Recorder.RecordEventWithReason (reason, evt);
 		}
 
+		public void MarkCustomAttribute (CustomAttribute ca, DependencyInfo reason) {
+			_context.Annotations.Recorder.RecordCustomAttribute (reason, ca);
+		}
+
 	}
 }

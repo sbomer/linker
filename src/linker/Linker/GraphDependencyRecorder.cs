@@ -245,7 +245,7 @@ namespace Mono.Linker
 		// }
 
 		public void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ctor), GetOrCreateNode (type), DependencyKind.ConstructedType));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ctor), GetOrCreateNode (type), DependencyKind.InstanceCtor));
 		}
 
 		public void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method) {
@@ -291,7 +291,7 @@ namespace Mono.Linker
 		}
 
 		public void RecordUserDependencyType (CustomAttribute ca, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ca), GetOrCreateNode (type), DependencyKind.UserDependencyType));
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ca), GetOrCreateNode (type), DependencyKind.PreserveDependencyType));
 		}
 
 		public void RecordFieldAccessFromMethod (MethodDefinition method, FieldDefinition field) {

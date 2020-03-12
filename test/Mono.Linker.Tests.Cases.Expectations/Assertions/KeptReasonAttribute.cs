@@ -35,9 +35,6 @@ namespace Mono.Linker.Tests.Cases.Expectations.Assertions
 
 		public KeptMethodReasonAttribute (DependencyKind kind) {
 			switch (kind) {
-			case DependencyKind.EntryMethod:
-				// ok
-				break;
 			default:
 				throw new ArgumentException ("invalid kept reason kind for method: " + nameof (kind));
 			}

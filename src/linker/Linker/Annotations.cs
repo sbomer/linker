@@ -28,6 +28,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using System.Linq;
@@ -524,6 +525,17 @@ namespace Mono.Linker {
 
 		public void MarkTypeWithReason (DependencyInfo reason, TypeDefinition type)
 		{
+			switch (reason.Kind) {
+			case DependencyKind.NestedType:
+				Debug.Assert (reason.Source is TypeDefinition);
+				Debug.Assert (type.DeclaringType == reason.Source);
+				break;
+			case DependencyKind.PreserveDependencyType:
+				Debug.Assert (reason.Source is CustomAttribute);
+				break;
+			// TODO: TypeInAssembly?
+			}
+
 			rule_dependency_recorder.RecordTypeWithReason (reason, type);
 			if (reason.Source == null) {
 				if (type.ToString() == "System.IDisposable")
@@ -674,12 +686,6 @@ namespace Mono.Linker {
 		{
 			context.Annotations.Mark (@override);
 			rule_dependency_recorder.RecordOverride (@base, @override);
-		}
-
-		public void MarkFieldAccessFromMethod (MethodDefinition method, FieldDefinition field)
-		{
-			context.Annotations.Mark (field);
-			rule_dependency_recorder.RecordFieldAccessFromMethod (method, field);
 		}
 
 		public void MarkEntryMethod (MethodDefinition method)

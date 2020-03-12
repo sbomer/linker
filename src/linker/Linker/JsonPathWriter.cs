@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using System.Collections.Generic;
 using System.Linq;
 using Mono.Cecil;
+using Mono.Linker.Steps;
 
 namespace Mono.Linker
 {
@@ -77,7 +78,11 @@ namespace Mono.Linker
 					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(type));
 					break;
 				case CustomAttribute attribute:
-					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(attribute));
+					// userdependency attributes don't get marked.
+					if (!PreserveDependencyLookupStep.IsPreserveDependencyAttribute (attribute.AttributeType) ||
+						context.KeepDependencyAttributes) {
+						System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(attribute));
+					}
 					break;
 				case SecurityAttribute sa:
 					// System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(sa));
