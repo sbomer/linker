@@ -1652,20 +1652,9 @@ namespace Mono.Linker.Steps {
 				return false;
 
 			foreach (MethodDefinition @base in base_list) {
-				// this check happens, even if the base declaringtype is an interface.
-				// meaning that if an instantiated type implements an interface
-				// from a copy assembly, we keep the interface methods.
-				// TODO: what about interface sweeping?
 				if (IgnoreScope (@base.DeclaringType.Scope))
 					return true;
 
-				// what if the instantiated type derives from another type
-				// that in turn derives from a type in a copy assembly?
-				// all's fine if it's not an interface - the logic is the same except for interfaces.
-				// but if A < B < Interface, this check here
-				// will NOT keep interface implementations in A if they override
-				// an interface. maybe this should be passed to
-				// IsVirtualNeededByInstantiatedTypeDueToPreservedScope???
 				if (IsVirtualNeededByTypeDueToPreservedScope (@base))
 					return true;
 			}
@@ -1832,9 +1821,9 @@ namespace Mono.Linker.Steps {
 					break; // FunctionPointerType is the original type
 				}
 
-				// blame the type reference (which isn't marked) on the original reason
+				// Blame the type reference (which isn't marked) on the original reason.
 				_context.MarkingHelpers.MarkTypeSpec (specification, reason);
-				// blame the outgoing element type on the specification
+				// Blame the outgoing element type on the specification.
 				(type, reason) = (specification.ElementType, new DependencyInfo (DependencyKind.ElementType, specification));
 			}
 
@@ -1910,8 +1899,6 @@ namespace Mono.Linker.Steps {
 
 			switch (preserve) {
 			case TypePreserve.All:
-				// TODO: it seems like PreserveAll on a type won't necessarily keep nested types,
-				// but PreserveAll on an assembly will.
 				MarkFields (type, true, new DependencyInfo (DependencyKind.FieldPreservedForType, type));
 				MarkMethods (type, new DependencyInfo (DependencyKind.MethodPreservedForType, type));
 				break;
@@ -2030,10 +2017,10 @@ namespace Mono.Linker.Steps {
 
 			Tracer.Push (reference);
 			if (reference.DeclaringType is GenericInstanceType) {
-				// blame the method reference on the original reason without marking it
+				// Blame the method reference on the original reason without marking it.
 				_context.MarkingHelpers.MarkMethodOnGenericInstance (reference, reason);
 				MarkType (reference.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfMethod, reference));
-				// mark the resolved method definition as a dependency of the reference
+				// Mark the resolved method definition as a dependency of the reference
 				reason = new DependencyInfo (DependencyKind.MethodOnGenericInstance, reference);
 			}
 
@@ -2070,7 +2057,7 @@ namespace Mono.Linker.Steps {
 		protected (MethodReference, DependencyInfo) GetOriginalMethod (MethodReference method, DependencyInfo reason)
 		{
 			while (method is MethodSpecification specification) {
-				// blame the method reference (which isn't marked) on the original reason
+				// Blame the method reference (which isn't marked) on the original reason.
 				_context.MarkingHelpers.MarkMethodSpec (specification, reason);
 				// blame the outgoing element method on the specification
 				if (method is GenericInstanceMethod gim)
@@ -2161,8 +2148,8 @@ namespace Mono.Linker.Steps {
 
 			bool markedForCall = (reason.Kind == DependencyKind.DirectCall || reason.Kind == DependencyKind.VirtualCall);
 			if (markedForCall) {
-				// record declaring type of a called method up-front as a special case so that we may
-				// track at least some method calls that trigger a cctor
+				// Record declaring type of a called method up-front as a special case so that we may
+				// track at least some method calls that trigger a cctor.
 				Tracer.Push (method);
 				MarkType (method.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfCalledMethod, method));
 				Tracer.Pop ();
@@ -2435,9 +2422,9 @@ namespace Mono.Linker.Steps {
 
 		protected void MarkProperty (PropertyDefinition prop, DependencyInfo reason)
 		{
-			// Record the property without marking it in Annotations
+			// Record the property without marking it in Annotations.
 			_context.MarkingHelpers.MarkProperty (prop, reason);
-			// consider making this more similar to MarkEvent and mark property methods?
+			// Consider making this more similar to MarkEvent and mark property methods?
 			MarkCustomAttributes (prop, new DependencyInfo (DependencyKind.CustomAttribute, prop));
 			DoAdditionalPropertyProcessing (prop);
 		}

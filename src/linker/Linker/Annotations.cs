@@ -470,30 +470,20 @@ namespace Mono.Linker {
 
 		public void MarkCustomAttribute (DependencyInfo reason, CustomAttribute ca)
 		{
-			// the linker doesn't really distinguish between an assembly and a MainModule.
-			// it marks Modules, and later checks if an assembly is used by checking whether the MainModule was marked.
-			// because of this, assembly attributes (which don't logically belong to a module) are parent-less.
-			// instead, we make the same assumption that they are 1-to-1 with the MainModule.
-			switch (reason.Kind) {
-			case DependencyKind.CustomAttribute:
-			case DependencyKind.GenericParameterCustomAttribute:
-			case DependencyKind.GenericParameterConstraintCustomAttribute:
-			case DependencyKind.ParameterAttribute:
-			case DependencyKind.ReturnTypeAttribute:
-				rule_dependency_recorder.RecordCustomAttribute (reason, ca);
-				break;
-			case DependencyKind.PropertyAccessedViaReflection:
-			case DependencyKind.PropertyOfType:
-			case DependencyKind.PropertyOfPropertyMethod:
-			case DependencyKind.EventAccessedViaReflection:
-			case DependencyKind.EventOfType:
-			case DependencyKind.EventOfEventMethod:
-				throw new Exception("can't get here");
-			case DependencyKind.AssemblyOrModuleCustomAttribute:
+			Debug.Assert (new DependencyKind [] {
+				DependencyKind.CustomAttribute,
+				DependencyKind.GenericParameterCustomAttribute,
+				DependencyKind.GenericParameterConstraintCustomAttribute,
+				DependencyKind.ParameterAttribute,
+				DependencyKind.ReturnTypeAttribute,
+				DependencyKind.AssemblyOrModuleCustomAttribute
+			}.Contains (reason.Kind));
+			// Assembly attributes may be marked or processed even for assemblies that are not kept, so
+			// they are treated as entry points for the dependency reporting.
+			if (reason.Kind == DependencyKind.AssemblyOrModuleCustomAttribute) {
 				context.MarkingHelpers.MarkEntryCustomAttribute (ca, new EntryInfo (EntryKind.AssemblyOrModuleCustomAttribute, reason.Source, ca));
-				break;
-			default:
-				throw new Exception("can't get here");
+			} else {
+				rule_dependency_recorder.RecordCustomAttribute (reason, ca);
 			}
 			Mark (ca);
 		}
