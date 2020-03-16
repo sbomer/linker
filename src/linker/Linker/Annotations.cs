@@ -130,7 +130,6 @@ namespace Mono.Linker {
 
 		public void SetAction (MethodDefinition method, MethodAction action)
 		{
-			// TODO: assert that action doesn't decrease.
 			method_actions [method] = action;
 		}
 

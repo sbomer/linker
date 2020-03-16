@@ -58,7 +58,6 @@ namespace Mono.Linker
 					graph.edgesTo.ContainsKey (node) ||
 					recorder.entryInfo.Any(ei => ei.Entry == node.Value) ||
 					recorder.internalMarkedTypes.Any(t => t == node.Value));
-				Console.WriteLine("node type: " + node.Value.GetType());
 				System.Diagnostics.Debug.Assert (
 					node.Value is MethodDefinition || node.Value is FieldDefinition || node.Value is TypeDefinition ||
 					node.Value is MethodReference || node.Value is TypeReference || node.Value is FieldReference ||
@@ -145,7 +144,6 @@ namespace Mono.Linker
 				var prefixString = edge.Info switch {
 					DependencyKind.DirectCall => "called from",
 					DependencyKind.VirtualCall => "maybe called virtually from",
-					DependencyKind.UnanalyzedReflectionCall => "not understood in call from",
 					DependencyKind.TriggersCctorThroughFieldAccess => "maybe triggered by field access from",
 					DependencyKind.TriggersCctorForCalledMethod => "maybe triggered by method call to",
 					DependencyKind.Override => "override of",

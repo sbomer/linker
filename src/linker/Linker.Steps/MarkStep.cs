@@ -334,10 +334,10 @@ namespace Mono.Linker.Steps {
 				return;
 
 			foreach (OverrideInformation @override in overrides)
-				ProcessOverride (@override, method);
+				ProcessOverride (@override);
 		}
 
-		void ProcessOverride (OverrideInformation overrideInformation, MethodDefinition virtualMethod)
+		void ProcessOverride (OverrideInformation overrideInformation)
 		{
 			var method = overrideInformation.Override;
 			var @base = overrideInformation.Base;
@@ -1200,12 +1200,13 @@ namespace Mono.Linker.Steps {
 			if (type.IsSerializable ())
 				MarkSerializable (type);
 
-			// TODO: This marks static fields of KeyWords/OpCodes/Tasks subclasses of an EventSource type.
+			// TODO: This needs work to ensure we handle EventSource appropriately.
+			// This marks static fields of KeyWords/OpCodes/Tasks subclasses of an EventSource type.
 			if (!_context.IsFeatureExcluded ("etw") && BCL.EventTracingForWindows.IsEventSourceImplementation (type, _context)) {
 				MarkEventSourceProviders (type);
 			}
 
-			// TODO: this marks properties for [EventData] types. Should we understand more of EventSource?
+			// This marks properties for [EventData] types as well as other attribute dependencies.
 			MarkTypeSpecialCustomAttributes (type);
 
 			MarkGenericParameterProvider (type);
@@ -1464,7 +1465,7 @@ namespace Mono.Linker.Steps {
 					}
 
 					while (type != null) {
-						// Non-understood DebuggerDisplayAttribute causes us to keep everything. Should this be a warning?
+						// TODO: Non-understood DebuggerDisplayAttribute causes us to keep everything. Should this be a warning?
 						MarkMethods (type, new DependencyInfo (DependencyKind.MethodKeptForNonUnderstoodAttribute, attribute));
 						MarkFields (type, includeStatic: true, new DependencyInfo (DependencyKind.FieldReferencedByAttribute, attribute));
 						// This logic would miss generic parameters used in methods/fields for generic types
@@ -1899,6 +1900,8 @@ namespace Mono.Linker.Steps {
 
 			switch (preserve) {
 			case TypePreserve.All:
+				// TODO: it seems like PreserveAll on a type won't necessarily keep nested types,
+				// but PreserveAll on an assembly will. Is this correct?
 				MarkFields (type, true, new DependencyInfo (DependencyKind.FieldPreservedForType, type));
 				MarkMethods (type, new DependencyInfo (DependencyKind.MethodPreservedForType, type));
 				break;
@@ -2020,7 +2023,7 @@ namespace Mono.Linker.Steps {
 				// Blame the method reference on the original reason without marking it.
 				_context.MarkingHelpers.MarkMethodOnGenericInstance (reference, reason);
 				MarkType (reference.DeclaringType, new DependencyInfo (DependencyKind.DeclaringTypeOfMethod, reference));
-				// Mark the resolved method definition as a dependency of the reference
+				// Mark the resolved method definition as a dependency of the reference.
 				reason = new DependencyInfo (DependencyKind.MethodOnGenericInstance, reference);
 			}
 
@@ -2059,12 +2062,11 @@ namespace Mono.Linker.Steps {
 			while (method is MethodSpecification specification) {
 				// Blame the method reference (which isn't marked) on the original reason.
 				_context.MarkingHelpers.MarkMethodSpec (specification, reason);
-				// blame the outgoing element method on the specification
+				// Blame the outgoing element method on the specification.
 				if (method is GenericInstanceMethod gim)
 					MarkGenericArguments (gim);
 
 				(method, reason) = (specification.ElementMethod, new DependencyInfo (DependencyKind.ElementMethod, specification));
-				// TODO: why is this inside of a while loop?
 				Debug.Assert (!(method is MethodSpecification));
 			}
 
@@ -2424,7 +2426,7 @@ namespace Mono.Linker.Steps {
 		{
 			// Record the property without marking it in Annotations.
 			_context.MarkingHelpers.MarkProperty (prop, reason);
-			// Consider making this more similar to MarkEvent and mark property methods?
+			// Consider making this more similar to MarkEvent method?
 			MarkCustomAttributes (prop, new DependencyInfo (DependencyKind.CustomAttribute, prop));
 			DoAdditionalPropertyProcessing (prop);
 		}
