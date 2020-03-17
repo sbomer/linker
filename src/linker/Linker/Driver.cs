@@ -494,6 +494,8 @@ namespace Mono.Linker {
 				if (dumpDependencies)
 					context.Tracer.AddRecorder (new XmlDependencyRecorder (context, dependenciesFileName));
 
+				context.Tracer.AddReflectionPatternRecorder (new LoggingReflectionPatternRecorder (context));
+
 				if (set_optimizations.Count > 0) {
 					foreach (var item in set_optimizations) {
 						if (item.Item3)
@@ -548,6 +550,12 @@ namespace Mono.Linker {
 				p.AddStepBefore (typeof (MarkStep), new RemoveUnreachableBlocksStep ());
 				p.AddStepBefore (typeof (OutputStep), new ClearInitLocalsStep ());
 
+				p.AddStepAfter (typeof (OutputStep), new AnalysisStep ());
+				// AnalysisStep retrieves the GraphRecorder, so we stash it on
+				// LinkContext in addition to adding it as a tracer sink.
+				context.Tracer.AddRecorder (context.GraphRecorder);
+				context.Tracer.AddReflectionPatternRecorder (context.GraphRecorder);
+
 				//
 				// Pipeline setup with all steps enabled
 				//
@@ -568,6 +576,7 @@ namespace Mono.Linker {
 				// RegenerateGuidStep [optional]
 				// ClearInitLocalsStep
 				// OutputStep
+				// AnalysisStep [optional]
 				//
 
 				foreach (string custom_step in custom_steps) {
@@ -905,7 +914,6 @@ namespace Mono.Linker {
 			Console.WriteLine ("  --dependencies-file PATH   Specify the dependencies output. Defaults to 'output/linker-dependencies.xml.gz'");
 			Console.WriteLine ("  --dump-dependencies        Dump dependencies for the linker analyzer tool");
 			Console.WriteLine ("  --reduced-tracing          Reduces dependency output related to assemblies that will not be modified");
-			Console.WriteLine ("");
 		}
 
 		static void Version ()
@@ -933,7 +941,6 @@ namespace Mono.Linker {
 			p.AppendStep (new CodeRewriterStep ());
 			p.AppendStep (new CleanStep ());
 			p.AppendStep (new RegenerateGuidStep ());
-			p.AppendStep (new AnalysisStep ());
 			p.AppendStep (new OutputStep ());
 			return p;
 		}

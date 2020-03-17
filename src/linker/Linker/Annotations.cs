@@ -63,15 +63,8 @@ namespace Mono.Linker {
 		protected readonly HashSet<TypeDefinition> marked_instantiated = new HashSet<TypeDefinition> ();
 		protected readonly HashSet<MethodDefinition> indirectly_called = new HashSet<MethodDefinition>();
 
-		private readonly IRuleDependencyRecorder rule_dependency_recorder;
-		public SearchableDependencyGraph<NodeInfo, DependencyKind> Graph => ((GraphDependencyRecorder)rule_dependency_recorder).graph;
-		public HashSet<UnsafeReachingData> UnsafeReachingData => ((GraphDependencyRecorder)rule_dependency_recorder).unsafeReachingData;
-
-		public GraphDependencyRecorder Recorder=> ((GraphDependencyRecorder)rule_dependency_recorder);
-
 		public AnnotationStore (LinkContext context) {
 			this.context = context;
-			rule_dependency_recorder = new GraphDependencyRecorder (context);
 		}
 
 		public bool ProcessSatelliteAssemblies { get; set; }
@@ -115,11 +108,8 @@ namespace Mono.Linker {
 			return MethodAction.Nothing;
 		}
 
-		public void SetAction (AssemblyDefinition assembly, AssemblyAction action, EntryInfo info)
+		public void SetAction (AssemblyDefinition assembly, AssemblyAction action)
 		{
-			// TODO: assert that action doesn't decrease.
-			// extra entry info is ok, as long as we don't have an assembly in the graph with NO entry info.
-			rule_dependency_recorder.RecordEntryAssembly (assembly, info);
 			assembly_actions [assembly] = action;
 		}
 
@@ -163,15 +153,40 @@ namespace Mono.Linker {
 			return fieldType_init.Contains (type);
 		}
 
+		[Obsolete ("Mark token providers with a reason instead.")]
 		public void Mark (IMetadataTokenProvider provider)
 		{
 			marked.Add (provider);
 			Tracer.AddDependency (provider, true);
 		}
 
+		public void Mark (IMetadataTokenProvider provider, DependencyInfo reason)
+		{
+			marked.Add (provider);
+			// some reasons are entries. these are reported to AddDirectDependency,
+			// but don't make it to edges in the graph.
+			Tracer.AddDirectDependency (provider, reason, marked: true);
+		}
+
+		[Obsolete ("Mark attributes with a reason instead.")]
 		public void Mark (CustomAttribute attribute)
 		{
 			marked_attributes.Add (attribute);
+		}
+
+		public void Mark (CustomAttribute attribute, DependencyInfo reason)
+		{
+			Debug.Assert (new DependencyKind [] {
+				DependencyKind.CustomAttribute,
+				DependencyKind.GenericParameterCustomAttribute,
+				DependencyKind.GenericParameterConstraintCustomAttribute,
+				DependencyKind.ParameterAttribute,
+				DependencyKind.ReturnTypeAttribute,
+				DependencyKind.AssemblyOrModuleCustomAttribute
+			}.Contains (reason.Kind));
+
+			marked_attributes.Add (attribute);
+			Tracer.AddDirectDependency (attribute, reason, marked: true);
 		}
 
 		public void Push (IMetadataTokenProvider provider)
@@ -213,9 +228,17 @@ namespace Mono.Linker {
 			return indirectly_called.Contains (method);
 		}
 
-		public void MarkInstantiatedUntracked (TypeDefinition type)
+		public void MarkInstantiated (TypeDefinition type)
 		{
 			marked_instantiated.Add (type);
+		}
+
+		public void MarkInstantiated (TypeDefinition type, DependencyInfo reason)
+		{
+			marked_instantiated.Add (type);
+			Debug.Assert (reason.Kind == DependencyKind.InstanceCtor);
+			Debug.Assert (reason.Source is MethodDefinition ctor && ctor.IsConstructor && ctor.DeclaringType == type);
+			Tracer.AddDirectDependency (type, reason, marked: false);
 		}
 
 		public bool IsInstantiated (TypeDefinition type)
@@ -463,252 +486,6 @@ namespace Mono.Linker {
 				return derivedInterfaces;
 
 			return null;
-		}
-
-		// TODO: move these helpers into MarkingHelpers.
-
-		public void MarkCustomAttribute (DependencyInfo reason, CustomAttribute ca)
-		{
-			Debug.Assert (new DependencyKind [] {
-				DependencyKind.CustomAttribute,
-				DependencyKind.GenericParameterCustomAttribute,
-				DependencyKind.GenericParameterConstraintCustomAttribute,
-				DependencyKind.ParameterAttribute,
-				DependencyKind.ReturnTypeAttribute,
-				DependencyKind.AssemblyOrModuleCustomAttribute
-			}.Contains (reason.Kind));
-			// Assembly attributes may be marked or processed even for assemblies that are not kept, so
-			// they are treated as entry points for the dependency reporting.
-			if (reason.Kind == DependencyKind.AssemblyOrModuleCustomAttribute) {
-				context.MarkingHelpers.MarkEntryCustomAttribute (ca, new EntryInfo (EntryKind.AssemblyOrModuleCustomAttribute, reason.Source, ca));
-			} else {
-				rule_dependency_recorder.RecordCustomAttribute (reason, ca);
-			}
-			Mark (ca);
-		}
-
-		public void MarkScopeOfType (TypeDefinition type, IMetadataScope scope)
-		{
-			if (scope.GetType() != typeof(Mono.Cecil.ModuleDefinition)) {
-				throw new Exception("non-module scope!?");
-			}
-			// rule_dependency_recorder.RecordScopeOfType (type, scope);
-			// don't record sccopes, because they would only be used for custom attributes,
-			// but we track module attributes as entry points currently.
-			Mark (scope);
-		}
-
-		public void MarkMethodWithReason (DependencyInfo reason, MethodDefinition method)
-		{
-			rule_dependency_recorder.RecordMethodWithReason (reason, method);
-			Mark (method);
-		}
-
-		public void MarkFieldWithReason (DependencyInfo reason, FieldDefinition field)
-		{
-			// TODO: if we ever don't set source, then the reason source might be NULL.
-			// need to handle this better.
-			rule_dependency_recorder.RecordFieldWithReason (reason, field);
-			Mark (field);
-		}
-
-		public void MarkTypeWithReason (DependencyInfo reason, TypeDefinition type)
-		{
-			switch (reason.Kind) {
-			case DependencyKind.NestedType:
-				Debug.Assert (reason.Source is TypeDefinition);
-				Debug.Assert (type.DeclaringType == reason.Source);
-				break;
-			case DependencyKind.PreserveDependencyType:
-				Debug.Assert (reason.Source is CustomAttribute);
-				break;
-			// TODO: TypeInAssembly?
-			}
-
-			rule_dependency_recorder.RecordTypeWithReason (reason, type);
-			if (reason.Source == null) {
-				if (type.ToString() == "System.IDisposable")
-					System.Diagnostics.Debugger.Break();
-			}
-			Mark (type);
-		}
-
-		public void MarkTypeLinkerInternal (TypeDefinition type)
-		{
-			rule_dependency_recorder.RecordTypeLinkerInternal (type);
-			Mark (type);
-		}
-
-		// every call to Annotations.Mark should ultimately go through one of these helpers,
-		// each of which tracks a "reason" that the item was marked.
-
-		// linker has a CheckProcessed.
-		// to Mark here, we need to be sure that it
-		// doesn't get processed twice.
-		// actually doing Annotations.Mark twice is not the problem.
-		// doing all the process logic is the problem.
-		public void MarkMethodCall (MethodDefinition caller, MethodDefinition callee)
-		{
-			rule_dependency_recorder.RecordDirectCall (caller, callee);
-			Mark (callee);
-		}
-
-		public void MarkVirtualMethodCall (MethodDefinition caller, MethodDefinition callee)
-		{
-			rule_dependency_recorder.RecordVirtualCall (caller, callee);
-			Mark (callee);
-			// TODO: see if there are multiple edges between same nodes.
-			// there shouldn't be... maybe?
-		}
-
-		public void MarkMethodAccessedViaReflection (MethodDefinition source, MethodDefinition accessedMethod)
-		{
-			Mark (accessedMethod);
-			rule_dependency_recorder.RecordAnalyzedReflectionAccess (source, accessedMethod);
-		}
-
-
-		// think of this as:
-		// we report data reaching this API, along with a context.
-		// the data is a call string suffix of length one, plus a value.
-		// <callsite, value>
-		// the value lattice has:
-		// known string that resolves to a member < known string that doesn't resolve < unknown string
-		// if dataflow analysis results in anything but a "known resolvable string" reaching certain APIs,
-		// we report errors. so these dataflow results must be recorded for the reporting infrastructure.
-		// ideally, also with a value!
-		// later, maybe add an instruction index.
-		public void MarkUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data)
-		{
-			// DATA is really: call context + data.
-			// (source method -> reflection method), data
-			// context is in general a list of callsites.
-			// for now, just one callsite.
-			rule_dependency_recorder.RecordUnanalyzedReflectionCall (source, reflectionMethod, instructionIndex, data);
-		}
-
-		// should we enforce that a method body is only ever reported once?
-		// I think so...
-		// but right now, we record it as dangerous at the callsite.
-		// this is a hack. it should be reported dangerous exactly once,
-		// when we scan the definition.
-
-		public void MarkNestedType (TypeDefinition declaringType, TypeDefinition nestedType)
-		{
-			context.Annotations.Mark (nestedType);
-			rule_dependency_recorder.RecordNestedType (declaringType, nestedType);
-		}
-
-		public void MarkUserDependencyType (CustomAttribute ca, TypeDefinition type)
-		{
-			context.Annotations.Mark (type);
-			rule_dependency_recorder.RecordUserDependencyType (ca, type);
-		}
-
-		public void MarkTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor)
-		{
-			context.Annotations.Mark (cctor);
-			rule_dependency_recorder.RecordTriggersStaticConstructorThroughFieldAccess (method, cctor);
-		}
-
-		public void MarkTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor)
-		{
-			context.Annotations.Mark (cctor);
-			rule_dependency_recorder.RecordTriggersStaticConstructorForCalledMethod (method, cctor);
-		}
-
-		public void MarkStaticConstructorForField (FieldDefinition field, MethodDefinition cctor)
-		{
-			context.Annotations.Mark (cctor);
-			rule_dependency_recorder.RecordStaticConstructorForField (field, cctor);
-		}
-
-		public void MarkInstantiatedByConstructor (MethodDefinition cctor, TypeDefinition type)
-		{
-			marked_instantiated.Add (type);
-			System.Diagnostics.Debug.Assert (cctor.DeclaringType == type);
-			rule_dependency_recorder.RecordInstantiatedByConstructor (cctor, type); // calls ctor?
-			// really, need an edge from instantiated type -> all methods
-			// so, track:
-			// 1. instantiated type
-			// 2. kept method for the instantiation
-			// if we keep it just for the type, and also because it's an override... that's fine.
-			// just need to report one.
-			// would like to see:
-
-
-			// dangerous virtual method
-			// kept for type instantiated by: cctor
-
-			// method:          T.M
-			// on type:         T
-			// instantiated by: T::.ctor
-			// called from:     A.N
-
-			// virtual method:            T.M
-			// on type instantiated from: A.N
-
-			// method:                        T.M
-			// kept for instantiated type:     T
-			// instantiated from: A.N
-
-			// method:                  T.M
-			// on type instantiated by: T::.ctor
-			// called from:             A.N
-
-
-		}
-
-		public void MarkInterfaceImplementation (InterfaceImplementation iface, TypeDefinition type)
-		{
-			Mark (iface);
-			rule_dependency_recorder.RecordInterfaceImplementation (type, iface);
-		}
-
-		public void MarkMethodOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method)
-		{
-			context.Annotations.Mark (method);
-			rule_dependency_recorder.RecordOverrideOnInstantiatedType (type, method);
-		}
-
-		public void MarkOverride (MethodDefinition @base, MethodDefinition @override)
-		{
-			context.Annotations.Mark (@override);
-			rule_dependency_recorder.RecordOverride (@base, @override);
-		}
-
-		public void MarkEntryMethod (MethodDefinition method)
-		{
-			// should already be marked!
-			// assert that: it already has an entry reason
-			// it's already marked.
-			System.Diagnostics.Debug.Assert (marked.Contains (method));
-			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.Entry == method));
-			context.Annotations.Mark (method);
-			// it should already be in the graph as an entry method.
-			// assert that it's already been reported to the recorder?
-		}
-
-		// MarkingHelpers mark the field originally, with an EntryInfo.
-		// Annotations.MarkEntry* record it pretty much with no dependency.
-		public void MarkEntryField (FieldDefinition field)
-		{
-			System.Diagnostics.Debug.Assert (marked.Contains (field));
-			System.Diagnostics.Debug.Assert (Recorder.entryInfo.Any(e => e.Entry == field));
-			context.Annotations.Mark (field);
-		}
-
-		public void MarkDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent)
-		{
-			Mark (parent);
-			rule_dependency_recorder.RecordDeclaringTypeOfType (type, parent);
-		}
-
-		public readonly HashSet<AssemblyDefinition> userAssemblies;
-		public void MarkUserAssembly (AssemblyDefinition assembly)
-		{
-			// TODO
-			// userAssemblies.Add (assembly);
 		}
 	}
 }

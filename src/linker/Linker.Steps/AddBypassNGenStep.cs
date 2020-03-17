@@ -88,7 +88,7 @@ namespace Mono.Linker.Steps {
 				coreLibAssembly.MainModule.Types.Add (bypassNGenAttributeDef);
 
 				if (Annotations.GetAction (coreLibAssembly) == AssemblyAction.Copy) {
-					Annotations.SetAction (coreLibAssembly, AssemblyAction.Save, new EntryInfo (EntryKind.Untracked));
+					Annotations.SetAction (coreLibAssembly, AssemblyAction.Save);
 				}
 
 				const MethodAttributes ctorAttributes = MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName;

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Text.Encodings.Web;
@@ -38,12 +39,12 @@ namespace Mono.Linker
 		// needs a dependency graph, 
 		private readonly Stream stream;
 		private readonly LinkContext context;
-		public JsonPathWriter (GraphDependencyRecorder dependencyRecorder, SearchableDependencyGraph<NodeInfo, DependencyKind> graph, HashSet<UnsafeReachingData> unsafeReachingData, Stream stream, LinkContext context) {
-			this.unsafeReachingData = unsafeReachingData;
-			this.graph = graph;
+		public JsonPathWriter (GraphDependencyRecorder recorder, Stream stream, LinkContext context) {
+			this.recorder = recorder;
+			this.unsafeReachingData = recorder.unsafeReachingData;
+			this.graph = recorder.graph;
 			this.stream = stream;
 			this.context = context;
-			this.recorder = dependencyRecorder;
 			CheckThatEveryNodeHasAReason();
 		}
 
@@ -54,45 +55,83 @@ namespace Mono.Linker
 				// each node either has an edge to it, or an entryinfo recording why it was placed in the graph as an entry point
 				// some types are marked "linker internal".
 				// for these... we track separate "internal" edges (not entryedges, but similar).
-				System.Diagnostics.Debug.Assert (
-					graph.edgesTo.ContainsKey (node) ||
-					recorder.entryInfo.Any(ei => ei.Entry == node.Value) ||
-					recorder.internalMarkedTypes.Any(t => t == node.Value));
-				System.Diagnostics.Debug.Assert (
+				var accounted = graph.edgesTo.ContainsKey (node) ||
+					node.Entry ||
+					recorder.internalMarkedTypes.Any (t => t == node.Value);
+				// entry iff there's at least one entry reason
+				// if the hashset is null, the ?.Count is null (it's a nullable<int32>)
+				// and comparing null >= 1 returns false.
+				// dictionary might not contain key.
+				// then value might be null...
+				// ugh. value should never be null.
+				Debug.Assert (node.Entry == (recorder.entryReasons.TryGetValue (node.Value, out HashSet<DependencyInfo> reasons) && reasons.Count >= 1));
+				if (!accounted) {
+					if (node.Entry) {
+						throw new Exception("unaccounted entry: " + node.Value.ToString());
+					} else {
+						throw new Exception("unaccounted non-entry: " + node.Value.ToString());
+					}
+				}
+				var supportedType = 
 					node.Value is MethodDefinition || node.Value is FieldDefinition || node.Value is TypeDefinition ||
 					node.Value is MethodReference || node.Value is TypeReference || node.Value is FieldReference ||
-					node.Value is PropertyDefinition || node.Value is EventDefinition ||
+					node.Value is PropertyDefinition || node.Value is EventDefinition || // all memberreference
 					node.Value is CustomAttribute || node.Value is SecurityAttribute || // ICustomAttribute
-					node.Value is InterfaceImplementation ||
-					node.Value is AssemblyDefinition
-				);
+					node.Value is InterfaceImplementation || // odd one... it's just an ICustomAttributeProvider, or its own class.
+					node.Value is AssemblyDefinition ||
+					// somehow we may get moduledefinition... why?
+					// oh yeah, ScopeOfType. but it doesn't hurt to have them in here.
+					// but then...
+					// we might hit a module before its CA is marked as entry? no problem.
+					node.Value is ModuleDefinition;
+				if (!supportedType) {
+					throw new Exception("unsupported type " + node.Value.GetType().ToString());
+				}
 				switch (node.Value) {
 				case MethodDefinition method:
+					if (!context.Annotations.IsMarked (method)) {
+						throw new Exception ("unmarked method " + method.ToString());
+					}
 					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(method));
 					break;
 				case FieldDefinition field:
+					if (!context.Annotations.IsMarked (field)) {
+						throw new Exception ("unmarked field " + field.ToString());
+					}
 					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(field));
 					break;
 				case TypeDefinition type:
+					if (!context.Annotations.IsMarked (type)) {
+						throw new Exception ("unmarked type " + type.ToString());
+					}
 					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(type));
 					break;
 				case CustomAttribute attribute:
-					// userdependency attributes don't get marked.
-					if (!PreserveDependencyLookupStep.IsPreserveDependencyAttribute (attribute.AttributeType) ||
-						context.KeepDependencyAttributes) {
-						System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(attribute));
-					}
+					// gets marked if preservedep and keeping,
+					// or it's a used attribute
+					// or keeping all attributes.
+					// otherwise, not marked.
 					break;
 				case SecurityAttribute sa:
 					// System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(sa));
 					// these never get marked in Annotations.
 					break;
 				case InterfaceImplementation implementation:
+					if (!context.Annotations.IsMarked (implementation)) {
+						throw new Exception ("unmarked method " + implementation.ToString());
+					}
+
 					System.Diagnostics.Debug.Assert(context.Annotations.IsMarked(implementation));
 					break;
 				case IMetadataTokenProvider tokenProvider:
 					// method/type/field ref, or property/event
-					System.Diagnostics.Debug.Assert(!context.Annotations.IsMarked(tokenProvider));
+					//if (context.Annotations.IsMarked (tokenProvider)) {
+					//	throw new Exception ("token provider unexpectedly marked: " + tokenProvider.ToString());
+					//}
+					// properties may or may not be marked.
+					// they will be marked if added via xml. they will not be marked in annotations if MarkProperty in MarkStep is called.
+
+					// System.Diagnostics.Debug.Assert(!context.Annotations.IsMarked(tokenProvider));
 					break;
 				default:
 					throw new Exception("WAT");
@@ -181,13 +220,13 @@ namespace Mono.Linker
 			// this is guaranteed to not create a new one, but retreive an existing one.
 			// assert this.
 			var outerNodeNode = recorder.GetOrCreateNode (outerValue);
-			IEnumerable<EntryInfo> entryInfos = null;
+			IEnumerable<DependencyInfo> entryInfos = null;
 			// this node was either untracked, or an entry node with a matching entryinfo.
 			// if it was an entry...
 
 			if (outerNodeNode.Entry) {
 				// look for the entry;
-				entryInfos = recorder.entryInfo.Where (ei => ei.Entry == outerNodeNode.Value);
+				entryInfos = recorder.entryReasons [outerValue];
 				if (entryInfos.Count() == 0) {
 					throw new Exception("no entry info found for entry node");
 				}
@@ -196,20 +235,13 @@ namespace Mono.Linker
 				}
 
 				foreach (var entryInfo in entryInfos) {
-					// found one that's not unknown!
-					switch (entryInfo.Kind) {
-					case EntryKind.XmlDescriptor:
-						prefixes.Add ("kept from xml descriptor: ");
-						break;
-					case EntryKind.RootAssembly:
-						prefixes.Add ("kept for root assembly: ");
-						break;
-					case EntryKind.AssemblyAction:
-						prefixes.Add ("kept for copy/save assembly: ");
-						break;
-					default:
-						throw new Exception("can't get here");
-					}
+					var entryDescription = entryInfo.Kind switch {
+						DependencyKind.XmlDescriptor => "kept from XML descriptor",
+						DependencyKind.RootAssembly => "kept for root assembly",
+						DependencyKind.AssemblyAction => "kept for assembly action",
+						DependencyKind.AssemblyOrModuleCustomAttribute => "kept for attribute"
+					};
+					prefixes.Add ($"{entryDescription}: ");
 				}
 			}
 
@@ -314,21 +346,6 @@ namespace Mono.Linker
 // 
 		// 	return collapsedTrace;
 		// }
-		}
-
-		bool IsUserCode (Node<NodeInfo> node) {
-			// TODO: determine whether it's part of:
-			// context.Recorder.userAssemblies.
-			// find assembly.
-			var assembly = ((MemberReference)node.Value).Module.Assembly;
-			if (context.Annotations.userAssemblies.Contains (assembly)) {
-				return true;
-			}
-			return false;
-		}
-
-		public void WritePaths() {
-			
 		}
 
 		public void Write() {

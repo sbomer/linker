@@ -41,64 +41,16 @@ namespace Mono.Linker
 		/// <remarks>The source and target are typically Cecil metadata objects (MethodDefinition, TypeDefinition, ...)
 		/// but they can also be the linker steps or really any other object.</remarks>
 		void RecordDependency (object source, object target, bool marked);
-	}
 
-
-	// public interface ISimpleRuleDependencyRecorder
-	// {
-	// 	void RecordDependency (MarkReasonKind kind, object source, object target) {
-	// 		switch (kind) {
-	// 		case MarkReasonKind.EntryType:
-// 
-	// 		}
-	// 	}
-	// }
-
-	public interface IRuleDependencyRecorder
-	{
-		void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method);
-		void RecordFieldWithReason (DependencyInfo reason, FieldDefinition field);
-		void RecordTypeWithReason (DependencyInfo reason, TypeDefinition type);
-		void RecordTypeSpecWithReason (DependencyInfo reason, TypeSpecification spec);
-		void RecordMethodSpecWithReason (DependencyInfo reason, MethodSpecification spec);
-		void RecordFieldOnGenericInstance (DependencyInfo reason, FieldReference field);
-		void RecordMethodOnGenericInstance (DependencyInfo reason, MethodReference method);
-		void RecordDirectCall (MethodDefinition caller, MethodDefinition callee);
-		void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee);
-		void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data);
-		void RecordAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target);
-
-		// void RecordDangerousMethod (MethodDefinition method);
-
-		void RecordEntryType (TypeDefinition type, EntryInfo info);
-		void RecordTypeLinkerInternal (TypeDefinition type);
-		void RecordEntryAssembly (AssemblyDefinition assembly, EntryInfo info);
-
-		// void RecordScopeOfType (TypeDefinition type, IMetadataScope scope);
-		void RecordEntryField (FieldDefinition field, EntryInfo info);
-		void RecordEntryMethod (MethodDefinition method, EntryInfo info);
-		void RecordAssemblyCustomAttribute (ICustomAttribute ca, EntryInfo info);
-
-
-		void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type);
-		void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method);
-		void RecordInterfaceImplementation (TypeDefinition type, InterfaceImplementation iface);
-
-		void RecordCustomAttribute (DependencyInfo reason, ICustomAttribute ca);
-
-		void RecordPropertyWithReason (DependencyInfo reason, PropertyDefinition property);
-		void RecordEventWithReason (DependencyInfo reason, EventDefinition evt);
-
-		void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType);
-
-		void RecordUserDependencyType (CustomAttribute customAttribute, TypeDefinition type);
-
-		void RecordFieldAccessFromMethod (MethodDefinition method, FieldDefinition field);
-//		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
-		void RecordTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor);
-		void RecordTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor);
-		void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor);
-		void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent);
-		void RecordOverride (MethodDefinition @base, MethodDefinition @override);
+		/// <summary>
+		/// Reports a dependency detected by the linker, with a well-defined reason for keeping the dependency.
+		/// </summary>
+		/// <param name="target">The target of the dependency (for example the callee method).</param>
+		/// <param name="reason">The reason for including the target dependency (for example a direct call from another method).</param>
+		/// <param name="marked">true if the target is also marked by the MarkStep as a result of this particular reason.</param>
+		/// <remarks>The target is typically a Cecil metadata object (MethodDefinition, TypeDefinition, ...)
+		/// but can also be the linker steps or really any other object. "marked" may be false for a target that
+		/// is still marked for some other reason.</remarks>
+		void RecordDependency (object target, DependencyInfo reason, bool marked);
 	}
 }

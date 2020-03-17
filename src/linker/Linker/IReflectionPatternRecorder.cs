@@ -38,6 +38,8 @@ namespace Mono.Linker
 	///  - or it will call UnrecognizedReflectionAccessPattern with an optional message describing why it could not recognize
 	///    the pattern.
 	/// </remarks>
+	// TODO: consider factoring the interface to take information about the pattern, not a message
+
 	public interface IReflectionPatternRecorder
 	{
 		/// <summary>

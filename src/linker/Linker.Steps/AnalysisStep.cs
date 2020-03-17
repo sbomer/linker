@@ -8,9 +8,13 @@ namespace Mono.Linker.Steps
 		protected override void Process ()
 		{
 			string jsonFile = Path.Combine (Context.OutputDirectory, "trimanalysis.json");
-			using FileStream fs = File.Create (jsonFile);
-			var writer = new JsonPathWriter(Context.Annotations.Recorder, Context.Annotations.Graph, Context.Annotations.UnsafeReachingData, fs, Context);
-			writer.Write ();
+			var graphRecorder = Context.GraphRecorder;
+			var graph = graphRecorder.graph;
+			var unsafeData = graphRecorder.unsafeReachingData;
+			using (FileStream fs = File.Create (jsonFile)) {
+				var writer = new JsonPathWriter (graphRecorder, fs, Context);
+				writer.Write ();
+			}
 		}
 	}
 }

@@ -39,6 +39,7 @@ namespace Mono.Linker {
 		virtual public AnnotationStore CreateAnnotationStore (LinkContext context) => new AnnotationStore (context);
 		virtual public MarkingHelpers CreateMarkingHelpers (LinkContext context) => new MarkingHelpers (context);
 		virtual public Tracer CreateTracer (LinkContext context) => new Tracer (context);
+		virtual public GraphDependencyRecorder CreateGraphRecorder (LinkContext context) => new GraphDependencyRecorder (context);
 	}
 
 	public class LinkContext : IDisposable {
@@ -118,6 +119,8 @@ namespace Mono.Linker {
 
 		public bool StripResources { get; set; }
 
+		public bool EnableDependencyAnalysis { get; set; }
+
 		public List<string> Substitutions { get; private set; }
 
 		public System.Collections.IDictionary Actions {
@@ -151,6 +154,8 @@ namespace Mono.Linker {
 		public KnownMembers MarkedKnownMembers { get; private set; }
 
 		public Tracer Tracer { get; private set; }
+
+		public GraphDependencyRecorder GraphRecorder { get; private set; }
 
 		public IReflectionPatternRecorder ReflectionPatternRecorder { get; set; }
 
@@ -192,7 +197,7 @@ namespace Mono.Linker {
 			_annotations = factory.CreateAnnotationStore (this);
 			MarkingHelpers = factory.CreateMarkingHelpers (this);
 			Tracer = factory.CreateTracer (this);
-			ReflectionPatternRecorder = new LoggingReflectionPatternRecorder (this);
+			GraphRecorder = factory.CreateGraphRecorder (this);
 			MarkedKnownMembers = new KnownMembers ();
 			StripResources = true;
 
@@ -335,37 +340,30 @@ namespace Mono.Linker {
 			return reference;
 		}
 		
-		// this sets action if  not already set.
-		public void SetAction (AssemblyDefinition assembly, AssemblyAction defaultAction, EntryInfo info)
+		public void SetAction (AssemblyDefinition assembly, AssemblyAction defaultAction)
 		{
 			RegisterAssembly (assembly);
 
 			if (!_actions.TryGetValue (assembly.Name.Name, out AssemblyAction action))
 				action = defaultAction;
 
-			Annotations.SetAction (assembly, action, info);
+			Annotations.SetAction (assembly, action);
 		}
 
 
-		// this DOES include actions passed on the command-line.
 		protected void SetDefaultAction (AssemblyDefinition assembly)
 		{
 			AssemblyNameDefinition name = assembly.Name;
 
 			string source = null;
 			if (_actions.TryGetValue (name.Name, out AssemblyAction action)) {
-				source = "specified action";
 			} else if (IsCore (name)) {
 				action = _coreAction;
-				source = "core assembly action";
 			} else {
 				action = _userAction;
-				source = "user assembly action";
 			}
 
-			// if the action changes... we should probably not track it multiple times.
-			// figure it out later.
-			_annotations.SetAction (assembly, action, new EntryInfo (EntryKind.AssemblyAction, source, assembly));
+			_annotations.SetAction (assembly, action);
 		}
 
 		public static bool IsCore (AssemblyNameReference name)

@@ -137,7 +137,7 @@ namespace Mono.Linker.Steps {
 
 		void MarkAndPreserveAll (TypeDefinition type)
 		{
-			Context.MarkingHelpers.MarkEntryType (type, new EntryInfo (EntryKind.XmlDescriptor, _xmlDocumentLocation, type));
+			Annotations.Mark (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.Push (type);
 			Annotations.SetPreserve (type, TypePreserve.All);
 
@@ -257,7 +257,7 @@ namespace Mono.Linker.Steps {
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {type.FullName} ({existingLevel}).  Duplicate uses ({duplicateLevel})"); 
 			} 
 
-			Context.MarkingHelpers.MarkEntryType (type, new EntryInfo (EntryKind.XmlDescriptor, _xmlDocumentLocation, type));
+			Annotations.Mark (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.Push (type);
 			Tracer.AddDirectDependency (this, type);
 
@@ -265,7 +265,7 @@ namespace Mono.Linker.Steps {
 				var currentType = type;
 				while (currentType.IsNested) {
 					var parent = currentType.DeclaringType;
-					Context.Annotations.MarkDeclaringTypeOfType (currentType, parent);
+					Context.Annotations.Mark (parent, new DependencyInfo (DependencyKind.DeclaringTypeOfType, currentType));
 					currentType = parent;
 				}
 			}
@@ -361,7 +361,7 @@ namespace Mono.Linker.Steps {
 				if (Annotations.IsMarked (field))
 					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
 				
-				Context.MarkingHelpers.MarkEntryField (field, new EntryInfo (EntryKind.XmlDescriptor, _xmlDocumentLocation, field));
+				Context.Annotations.Mark (field, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			} else {
 				AddUnresolveMarker (string.Format ("T: {0}; F: {1}", type, signature));
 			}
@@ -433,7 +433,7 @@ namespace Mono.Linker.Steps {
 			if (Annotations.IsMarked (method)) 
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}"); 
 
-			Context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo (EntryKind.XmlDescriptor, _xmlDocumentLocation, method));
+			Annotations.Mark (method, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.MarkIndirectlyCalledMethod (method);
 			Tracer.AddDirectDependency (this, method);
 			Annotations.SetAction (method, MethodAction.Parse);

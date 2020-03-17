@@ -76,7 +76,7 @@ namespace Mono.Linker.Steps {
 		{
 			switch (Annotations.GetAction (assembly)) {
 			case AssemblyAction.AddBypassNGenUsed:
-				Annotations.SetAction (assembly, AssemblyAction.AddBypassNGen, new EntryInfo (EntryKind.Untracked));
+				Annotations.SetAction (assembly, AssemblyAction.AddBypassNGen);
 				goto case AssemblyAction.AddBypassNGen;
 
 			case AssemblyAction.AddBypassNGen:
@@ -89,7 +89,7 @@ namespace Mono.Linker.Steps {
 				break;
 
 			case AssemblyAction.CopyUsed:
-				Annotations.SetAction (assembly, AssemblyAction.Copy, new EntryInfo (EntryKind.Untracked));
+				Annotations.SetAction (assembly, AssemblyAction.Copy);
 				goto case AssemblyAction.Copy;
 
 			case AssemblyAction.Copy:
@@ -103,7 +103,7 @@ namespace Mono.Linker.Steps {
 				// when main.exe has unused reference to type in lib.dll
 				//
 				if (SweepTypeForwarders (assembly))
-					Annotations.SetAction (assembly, AssemblyAction.Save, new EntryInfo (EntryKind.Untracked));
+					Annotations.SetAction (assembly, AssemblyAction.Save);
 
 				break;
 
@@ -173,7 +173,7 @@ namespace Mono.Linker.Steps {
 
 		protected virtual void RemoveAssembly (AssemblyDefinition assembly)
 		{
-			Annotations.SetAction (assembly, AssemblyAction.Delete, new EntryInfo (EntryKind.Untracked));
+			Annotations.SetAction (assembly, AssemblyAction.Delete);
 
 			foreach (var a in assemblies) {
 				switch (Annotations.GetAction (a)) {
@@ -246,12 +246,12 @@ namespace Mono.Linker.Steps {
 					//		foo.dll -> facade.dll    -> lib.dll
 					//		copy    |  copy (delete) |  link
 					//
-					Annotations.SetAction (assembly, AssemblyAction.Save, new EntryInfo (EntryKind.Untracked));
+					Annotations.SetAction (assembly, AssemblyAction.Save);
 					break;
 
 				case AssemblyAction.AddBypassNGenUsed:
 					if (IsUsedAssembly (assembly)) {
-						Annotations.SetAction (assembly, AssemblyAction.AddBypassNGen, new EntryInfo (EntryKind.Untracked));
+						Annotations.SetAction (assembly, AssemblyAction.AddBypassNGen);
 						goto case AssemblyAction.AddBypassNGen;
 					}
 					break;

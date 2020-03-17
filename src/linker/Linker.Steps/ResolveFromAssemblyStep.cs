@@ -92,7 +92,7 @@ namespace Mono.Linker.Steps
 		public static void ProcessLibrary (LinkContext context, AssemblyDefinition assembly, RootVisibility rootVisibility = RootVisibility.Any)
 		{
 			var action = rootVisibility == RootVisibility.Any ? AssemblyAction.Copy : AssemblyAction.Link;
-			context.SetAction (assembly, action, new EntryInfo (EntryKind.AssemblyAction, "root library", assembly));
+			context.SetAction (assembly, action);
 
 			context.Tracer.Push (assembly);
 
@@ -151,7 +151,7 @@ namespace Mono.Linker.Steps
 				return;
 			}
 
-			context.MarkingHelpers.MarkEntryType (type, new EntryInfo (EntryKind.RootAssembly, type.Module.Assembly, type));;
+			context.Annotations.Mark (type, new DependencyInfo (DependencyKind.RootAssembly, type.Module.Assembly));
 			context.Annotations.Push (type);
 
 			if (type.HasFields)
@@ -169,24 +169,14 @@ namespace Mono.Linker.Steps
 		{
 			// don't track, since this doesn't actually mark types in the assembly.
 			// copy overrides this.
-			Context.SetAction (assembly, AssemblyAction.Link, new EntryInfo (EntryKind.Untracked));
+			Context.SetAction (assembly, AssemblyAction.Link);
 
 			Tracer.Push (assembly);
 
 			MethodDefinition entryPoint = assembly.EntryPoint;
-			// the "reason" we mark this type is because it's the declaring type of the entry method.
-			// this could lead to execution of the type's cctor which might be dangerous.
-			// the "reason" this was marked needs to be propagated to MarkStep.
-			// this is a bug.
-			// dangerous code in the cctor of Program will not get surfaced for the right reason.
-			// Context.Annotations.MarkDeclaringTypeOfMethod (entryPoint, entryPoint.DeclaringType);
-			// don't trace a "reason" for declaring type of the entry point.
-			// it will get a reason as the declaring type of a called method.
-			// Context.Annotations.Mark (entryPoint.DeclaringType);
+			TypeDefinition declaringType = entryPoint.DeclaringType;
+			Annotations.Mark (declaringType, new DependencyInfo (DependencyKind.RootAssembly, declaringType.Module.Assembly));
 
-			Context.Annotations.MarkUserAssembly (assembly);
-
-			// this already marks the method as an entry point.
 			MarkMethod (Context, assembly.EntryPoint, MethodAction.Parse, RootVisibility.Any);
 
 			Tracer.Pop ();
@@ -201,7 +191,7 @@ namespace Mono.Linker.Steps
 					_ => true
 				};
 				if (markField) {
-					context.MarkingHelpers.MarkEntryField (field, new EntryInfo (EntryKind.RootAssembly, field.DeclaringType.Module.Assembly, field));
+					context.Annotations.Mark (field, new DependencyInfo (DependencyKind.RootAssembly, field.Module.Assembly));
 				}
 			}
 		}
@@ -221,7 +211,7 @@ namespace Mono.Linker.Steps
 			};
 
 			if (markMethod) {
-				context.MarkingHelpers.MarkEntryMethod (method, new EntryInfo (EntryKind.RootAssembly, method.Module.Assembly, method));
+				context.Annotations.Mark (method, new DependencyInfo (DependencyKind.RootAssembly, method.Module.Assembly));
 				context.Annotations.SetAction (method, action);
 			}
 		}

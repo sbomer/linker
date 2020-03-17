@@ -26,6 +26,7 @@
 using Mono.Cecil;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Mono.Linker
 {
@@ -72,9 +73,8 @@ namespace Mono.Linker
 	/// <summary>
 	/// Class which implements IDependencyRecorder and writes the dependencies into an in-memory graph.
 	/// </summary>
-	public class GraphDependencyRecorder : IRuleDependencyRecorder
+	public class GraphDependencyRecorder : IDependencyRecorder, IReflectionPatternRecorder
 	{
-
 		// mark an instruction if:
 		// we're marking a method, it's forceparse or parse with assembly action link, etc...
 		// AND (with unreachable bodies opt) it's either static, instantiated, or not worth converting to throw
@@ -155,163 +155,135 @@ namespace Mono.Linker
 		// in addition to a callgraph, this also stores information about non-understood dataflow to sometimes unsafe methods.
 		// potentially unsafe dataflow results.
 		public readonly HashSet<UnsafeReachingData> unsafeReachingData;
-		public readonly HashSet<EntryInfo> entryInfo;
+		public readonly Dictionary<object, HashSet<DependencyInfo>> entryReasons;
 		public readonly HashSet<TypeDefinition> internalMarkedTypes;
 		LinkContext context;
 
 		public GraphDependencyRecorder (LinkContext context) {
 			graph = new SearchableDependencyGraph<NodeInfo, DependencyKind> ();
 			unsafeReachingData = new HashSet<UnsafeReachingData> ();
-			entryInfo = new HashSet<EntryInfo> ();
+			entryReasons = new Dictionary<object, HashSet<DependencyInfo>> ();
 			internalMarkedTypes = new HashSet<TypeDefinition> ();
 			this.context = context;
 		}
 
-		public void RecordTypeLinkerInternal (TypeDefinition type) {
-			graph.AddNode (GetOrCreateNode (type));
-			internalMarkedTypes.Add (type);
+		public void RecordDependency (object source, object target, bool marked) {
+			// called for the stack-based tracer dependencies.
+			// don't record these.
 		}
 
-		public void RecordMethodWithReason (DependencyInfo reason, MethodDefinition method) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (method), reason.Kind));
+		private void RecordDependency (object target, DependencyInfo reason) {
+			// LinkerInternal has no source.
+			if (reason.Kind == DependencyKind.LinkerInternal) {
+				Debug.Assert (reason.Source == null);
+				Debug.Assert (target is TypeDefinition);
+				graph.AddNode (GetOrCreateNode (target));
+				internalMarkedTypes.Add (target as TypeDefinition);
+				return;
+			}
+
+			// if it's an entry? add the entry node to the graph,
+			// and record entryinfo.
+			if (reason.Kind == DependencyKind.RootAssembly) {
+				Debug.Assert (reason.Source is AssemblyDefinition);
+				graph.AddNode (GetOrCreateEntryNode (target));
+				AddEntryReason (target, reason);
+				return;
+			}
+
+			if (reason.Kind == DependencyKind.XmlDescriptor) {
+				Debug.Assert (reason.Source is string);
+				graph.AddNode (GetOrCreateEntryNode (target));
+				AddEntryReason (target, reason);
+				return;
+			}
+
+			if (reason.Kind == DependencyKind.AssemblyOrModuleCustomAttribute) {
+				Debug.Assert (reason.Source is AssemblyDefinition || reason.Source is ModuleDefinition);
+				Debug.Assert (target is CustomAttribute || target is SecurityAttribute);
+				graph.AddNode (GetOrCreateEntryNode (target));
+				AddEntryReason (target, reason);
+				return;
+			}
+
+			if (reason.Kind == DependencyKind.AssemblyAction) {
+				Debug.Assert (reason.Source is AssemblyAction);
+				Debug.Assert (target is AssemblyDefinition);
+				graph.AddNode (GetOrCreateEntryNode (target));
+				AddEntryReason (target, reason);
+				return;
+			}
+
+			// not an entry...
+			Debug.Assert (
+				reason.Source is MemberReference ||
+				reason.Source is ICustomAttribute ||
+				reason.Source is InterfaceImplementation ||
+				reason.Source is AssemblyDefinition // for TypeInAssembly
+				// we never mark anything as a dependency of a ModuleDefinition
+				// for entry points, could be an:
+				// assembly, string (xml descriptor), assembly action
+				// TypeInAssembly?
+			);
+			Debug.Assert (
+				target is MemberReference ||
+				target is ICustomAttribute ||
+				target is InterfaceImplementation ||
+				target is ModuleDefinition || // we mark modules and assemblies as scopes of types
+				target is AssemblyDefinition
+			);
+
+			if (reason.Source == null)
+				throw new InvalidOperationException ("no source provided for reason " + reason.Kind.ToString ());
+
+			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (target), reason.Kind));
 		}
 
-		public void RecordFieldWithReason (DependencyInfo reason, FieldDefinition field) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (field), reason.Kind));
+		public void RecordDependency (object target, DependencyInfo reason, bool marked) {
+			switch (target) {
+			case IMetadataTokenProvider provider:
+				if (marked)
+					Debug.Assert (context.Annotations.IsMarked (provider));
+				break;
+			case CustomAttribute attribute:
+				if (marked)
+					Debug.Assert (context.Annotations.IsMarked (attribute));
+				break;
+			case SecurityAttribute attribute:
+				// we never mark security attributes
+				Debug.Assert (!marked);
+				break;
+			default:
+				throw new Exception ("non-understood target!");
+			}
+			RecordDependency (target, reason);
 		}
 
-		public void RecordTypeWithReason (DependencyInfo reason, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (type), reason.Kind));
+		public void RecognizedReflectionAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, IMemberDefinition accessedItem)
+		{
+			// Do nothing - there's no logging for successfully recognized patterns
 		}
 
-		public void RecordTypeSpecWithReason (DependencyInfo reason, TypeSpecification spec) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (spec), reason.Kind));
-		}
-		public void RecordMethodSpecWithReason (DependencyInfo reason, MethodSpecification spec) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (spec), reason.Kind));
-		}
-
-		public void RecordFieldOnGenericInstance (DependencyInfo reason, FieldReference field) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (field), reason.Kind));
-		}
-
-		public void RecordMethodOnGenericInstance (DependencyInfo reason, MethodReference method) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (method), reason.Kind));
-		}
-
-		public void RecordCustomAttribute (DependencyInfo reason, ICustomAttribute ca) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (ca), reason.Kind));
-		}
-
-		public void RecordPropertyWithReason (DependencyInfo reason, PropertyDefinition property) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (property), reason.Kind));
-		}
-
-		public void RecordEventWithReason (DependencyInfo reason, EventDefinition evt) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (reason.Source), GetOrCreateNode (evt), reason.Kind));
-		}
-
-		public void RecordDirectCall (MethodDefinition caller, MethodDefinition callee) {
-			// TODO: track instruction index
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (caller), GetOrCreateNode (callee), DependencyKind.DirectCall));
-		}
-
-		public void RecordVirtualCall (MethodDefinition caller, MethodDefinition callee) {
-			// TODO: track instruction index
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (caller), GetOrCreateNode (callee), DependencyKind.VirtualCall));
-		}
-
-		// read as: Record ContextSensitiveData reaches
-		// to mean that reflectionMethod is reached with data that is an unknown or unresolved string, from context ending with callsite in source.
-		public void RecordUnanalyzedReflectionCall (MethodDefinition source, MethodDefinition reflectionMethod, int instructionIndex, ReflectionData data) {
-			// when we have an unanalyzed reflection call, put the callsite into the graph.
-			// just use valuetuple for now.
-			// and add an edge from the containing method of the callsite to the dangerous callsite.
-			// var callsite = (source, reflectionMethod, instructionIndex);
-			var callsite = new Callsite { caller = source, callee = reflectionMethod };
-			var reachingData = new UnsafeReachingData { callsite = callsite, data = data };
+		public void UnrecognizedReflectionAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, string message)
+		{
+			var callsite = new Callsite { caller = sourceMethod, callee = reflectionMethod };
+			var reflectionData = new ReflectionData { kind = ReflectionDataKind.Unknown };
+			var reachingData = new UnsafeReachingData { callsite = callsite, data = reflectionData };
 			unsafeReachingData.Add (reachingData);
 		}
-		public void RecordAnalyzedReflectionAccess (MethodDefinition source, MethodDefinition target) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (source), GetOrCreateNode (target), DependencyKind.MethodAccessedViaReflection));
-		}
 
-		public void RecordOverride (MethodDefinition @base, MethodDefinition @override) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (@base), GetOrCreateNode (@override), DependencyKind.Override));
-		}
-
-		// public void RecordScopeOfType (TypeDefinition type, IMetadataScope scope) {
-		// 	graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (scope), DependencyKind.ScopeOfType));
-		// }
-
-		public void RecordInstantiatedByConstructor (MethodDefinition ctor, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ctor), GetOrCreateNode (type), DependencyKind.InstanceCtor));
-		}
-
-		public void RecordOverrideOnInstantiatedType (TypeDefinition type, MethodDefinition method) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (method), DependencyKind.OverrideOnInstantiatedType));
-		}
-
-		public void RecordInterfaceImplementation (TypeDefinition type, InterfaceImplementation iface) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (iface), DependencyKind.InterfaceImplementationOnType));
-		}
-
-		public void RecordEntryType (TypeDefinition type, EntryInfo info) {
-			var node = GetOrCreateEntryNode (type);
-			graph.AddNode (node);
-			entryInfo.Add (info);
-		}
-
-		public void RecordEntryAssembly (AssemblyDefinition assembly, EntryInfo info) {
-			var node = GetOrCreateEntryNode (assembly);
-			graph.AddNode (node);
-			entryInfo.Add (info);
-		}
-
-		// TODO: combine entry helpers into one?
-		public void RecordAssemblyCustomAttribute (ICustomAttribute ca, EntryInfo info) {
-			var node = GetOrCreateEntryNode (ca);
-			graph.AddNode (node);
-			entryInfo.Add (info);
-		}
-		public void RecordEntryField (FieldDefinition field, EntryInfo info) {
-			var node = GetOrCreateEntryNode (field);
-			graph.AddNode (node);
-			entryInfo.Add (info);
-		}
-		public void RecordEntryMethod (MethodDefinition method, EntryInfo info) {
-			var node = GetOrCreateEntryNode (method);
-			System.Diagnostics.Debug.Assert (info.Entry == method);
-			graph.AddNode (node);
-			entryInfo.Add (info);
-		}
-
-		public void RecordNestedType (TypeDefinition declaringType, TypeDefinition nestedType) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (declaringType), GetOrCreateNode (nestedType), DependencyKind.NestedType));
-		}
-
-		public void RecordUserDependencyType (CustomAttribute ca, TypeDefinition type) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (ca), GetOrCreateNode (type), DependencyKind.PreserveDependencyType));
-		}
-
-		public void RecordFieldAccessFromMethod (MethodDefinition method, FieldDefinition field) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (method), GetOrCreateNode (field), DependencyKind.FieldAccess));
-		}
-
-		public void RecordTriggersStaticConstructorThroughFieldAccess (MethodDefinition method, MethodDefinition cctor) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (method), GetOrCreateNode (cctor), DependencyKind.TriggersCctorThroughFieldAccess));
-		}
-
-		public void RecordTriggersStaticConstructorForCalledMethod (MethodDefinition method, MethodDefinition cctor) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (method), GetOrCreateNode (cctor), DependencyKind.TriggersCctorForCalledMethod));
-		}
-
-		public void RecordStaticConstructorForField (FieldDefinition field, MethodDefinition cctor) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (field), GetOrCreateNode (cctor), DependencyKind.CctorForField));
-		}
-
-		public void RecordDeclaringTypeOfType (TypeDefinition type, TypeDefinition parent) {
-			graph.AddEdge (new Edge<NodeInfo, DependencyKind> (GetOrCreateNode (type), GetOrCreateNode (parent), DependencyKind.DeclaringTypeOfType));
+		private void AddEntryReason (object o, DependencyInfo reason) {
+			Debug.Assert (
+				reason.Kind == DependencyKind.AssemblyAction ||
+				reason.Kind == DependencyKind.AssemblyOrModuleCustomAttribute ||
+				reason.Kind == DependencyKind.XmlDescriptor ||
+				reason.Kind == DependencyKind.RootAssembly
+			);
+			if (!entryReasons.TryGetValue (o, out HashSet<DependencyInfo> reasons)) {
+				reasons = new HashSet<DependencyInfo> ();
+				entryReasons [o] = reasons;
+			}
+			reasons.Add (reason);
 		}
 	}
 }
