@@ -1,3 +1,6 @@
 [submodule "cecil"]
 	path = external/cecil
 	url = git://github.com/mono/cecil.git
+[submodule "external/SuffixTree"]
+	path = external/SuffixTree
+	url = https://github.com/sbomer/SuffixTree

@@ -230,6 +230,12 @@ namespace Mono.Linker.Tests.TestCases
 			Run (testCase);
 		}
 
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.OutliningTests))]
+		public void OutliningTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
 		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.RequiresCapabilityTests))]
 		public void RequiresCapabilityTests (TestCase testCase)
 		{

@@ -38,6 +38,12 @@
     <PackageReference Include="System.Text.Json" Version="4.7.1" />
     <ProjectReference Condition="'$(UseCecilPackage)' != 'true'" Include="..\..\external\cecil\Mono.Cecil.csproj" />
     <ProjectReference Condition="'$(UseCecilPackage)' != 'true'" Include="..\..\external\cecil\symbols\pdb\Mono.Cecil.Pdb.csproj" />
+    <!-- Suffix Tree library from https://github.com/baratgabor/SuffixTree -->
+    <ProjectReference Include="..\..\external\SuffixTree\SuffixTree\SuffixTree.csproj" />
+    <!-- Another option. This one exposes a dictionary-like interface. Package targets .NET Framework 4.6.1. -->
+    <!--
+      <PackageReference Include="TrieNet" Version="1.0.3.26316" />
+    -->
   </ItemGroup>
 
   <ItemGroup Condition="'$(MonoBuild)' != ''">

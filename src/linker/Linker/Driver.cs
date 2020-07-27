@@ -732,6 +732,13 @@ namespace Mono.Linker
 		// exit code determined by dotnet.
 		public int Run (ILogger customLogger = null)
 		{
+#if DEBUG
+			if (!String.IsNullOrEmpty (System.Environment.GetEnvironmentVariable("DEBUG_ILLINK"))) {
+				while (!System.Diagnostics.Debugger.IsAttached) {
+					System.Threading.Thread.Sleep(100);
+				}
+			}
+#endif
 			int setupStatus = SetupContext (customLogger);
 			if (setupStatus > 0)
 				return 0;
@@ -1187,6 +1194,7 @@ namespace Mono.Linker
 			p.AppendStep (new ValidateVirtualMethodAnnotationsStep ());
 			p.AppendStep (new SweepStep ());
 			p.AppendStep (new CodeRewriterStep ());
+			p.AppendStep (new OutlinerStep ());
 			p.AppendStep (new CleanStep ());
 			p.AppendStep (new RegenerateGuidStep ());
 			p.AppendStep (new OutputStep ());
