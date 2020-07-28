@@ -33,6 +33,7 @@ using System.IO;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using SuffixTree;
+using SuffixArray;
 
 namespace Mono.Linker
 {
@@ -68,11 +69,13 @@ namespace Mono.Linker
 
 		SuffixTree.SuffixTree _suffixTree;
 
-		Dictionary<char, Instruction> _instructionMap;
+		SuffixArray.SuffixArray<int> _suffixArray;
 
-		string _instructionSequence;
+		Dictionary<int, Instruction> _instructionMap;
 
-		public string InstructionSequence {
+		List<int> _instructionSequence;
+
+		public List<int> InstructionSequence {
 			get => _instructionSequence;
 			set => _instructionSequence = value;
 		}
@@ -82,7 +85,12 @@ namespace Mono.Linker
 			set => _suffixTree = value;
 		}
 
-		public Dictionary<char, Instruction> InstructionMap {
+		public SuffixArray.SuffixArray<int> SuffixArray {
+			get => _suffixArray;
+			set => _suffixArray = value;
+		}
+
+		public Dictionary<int, Instruction> InstructionMap {
 			get => _instructionMap;
 			set => _instructionMap = value;
 		}

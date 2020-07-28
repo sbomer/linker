@@ -21,11 +21,13 @@ namespace Mono.Linker.Steps
 		protected override void Process()
 		{
 			// extract the longest repeated subsequence.
-			var (length, end) = Context.SuffixTree.GetLongestRepeatedSubstring();
-			var start = end - length;
-			Console.WriteLine("longest subsequence:");
-			var decoded = SuffixTree.SuffixTree.DecodeLabel(Context.InstructionSequence.Substring(start, length));
-			Console.WriteLine(decoded);
+			
+			// using suffixtree... didn't get it working
+			// var (length, end) = Context.SuffixTree.GetLongestRepeatedSubstring();
+			// var start = end - length;
+			// Console.WriteLine("longest subsequence:");
+			// var decoded = SuffixTree.SuffixTree.DecodeLabel(Context.InstructionSequence.Substring(start, length));
+			// Console.WriteLine(decoded);
 			// decode the instruction string back into instructions.
 			// TODO: this doesn't seem to work yet.
 			// a key isn't found in the dictionary...
@@ -34,6 +36,14 @@ namespace Mono.Linker.Steps
 			// 	var instr = Context.InstructionMap[c];
 			// 	Console.WriteLine(instr.ToString ());
 			// }
+
+			// using suffix array
+			List<int> longestRepeatedSubstring = Context.SuffixArray.GetLongestRepeatedSubstring();
+			Console.WriteLine("Longest subsequence:");
+			foreach (int i in longestRepeatedSubstring) {
+				Console.Write(i.ToString("X8"));
+				Console.WriteLine(": " + Context.InstructionMap[i]);
+			}
 
 
 			// just put the extracted sequences into corelib for now
@@ -48,6 +58,8 @@ namespace Mono.Linker.Steps
 			// pretend that we have identified an eligible subsequence to extract.
 			// this hard-codes a known common subsequence in a testcase assembly.
 			targetAssembly = Context.Resolve ("test");
+			if (targetAssembly == null)
+				return;
 			var t = targetAssembly.FindType ("Mono.Linker.Tests.Cases.Outlining.OutliningWorks");
 			var sequenceDef = t.Methods.Where (m => m.Name == "A").Single ();
 			// just one instruction, a ldc.i4.s

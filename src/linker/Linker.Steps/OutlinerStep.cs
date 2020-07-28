@@ -6,33 +6,29 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 // using Gma.DataStructures.StringSearch;
 using SuffixTree;
+using SuffixArray;
 using System.Collections.Generic;
 
 namespace Mono.Linker.Steps
 {
 	public class OutlinerStep : BaseStep
 	{
-		StringBuilder sb;
-		Dictionary<char, Instruction> instruction;
-
 		SuffixTree.SuffixTree SuffixTree {
 			get => Context.SuffixTree;
 		}
 
-		Dictionary<char, Instruction> InstructionMap {
+		Dictionary<int, Instruction> InstructionMap {
 			get => Context.InstructionMap;
 		}
 
-		public OutlinerStep ()
-		{
-			instruction = new Dictionary<char, Instruction> ();
-			sb = new StringBuilder ();
-		}
+		InstructionAsInt instructionAsInt;
 
 		protected override void Process ()
 		{
+			Context.InstructionSequence = new List<int> ();
 			Context.SuffixTree = new SuffixTree.SuffixTree ();
-			Context.InstructionMap = new Dictionary<char, Instruction> ();
+			Context.InstructionMap = new Dictionary<int, Instruction> ();
+			instructionAsInt = new InstructionAsInt ();
 		}
 
 		protected override void ProcessAssembly (AssemblyDefinition assembly)
@@ -57,38 +53,53 @@ namespace Mono.Linker.Steps
 
 		void ProcessMethod (MethodDefinition method)
 		{
-			if (!(method.ToString ().Contains ("Mono.Linker.Tests.Cases.Outlining")))
-//					method.ToString ().Contains ("Main")))
+			if (!method.IsIL || method.IsNative || !method.IsManaged)
+				return;
+			if (!method.HasBody)
+				return;
+
+			if (!(method.ToString ().Contains ("Mono.Linker.Tests.Cases.Outlining") ||
+				method.ToString ().Contains(" console")
+			))
 				return;	
 
+			Console.WriteLine("encoding method " + method.ToString());
+
 			foreach (var instr in method.Body.Instructions) {
-				// encode instruction as a character
-				var c = (char) instr.ToString ().GetHashCode ();
+				// encode instruction as an int
+				var c = instructionAsInt.Get (instr);
 
 				// track mapping from character -> instruction
-				if (!instruction.TryAdd (c, instr)) {
-					Debug.Assert (instruction[c].ToString () == instr.ToString ());
+				if (!Context.InstructionMap.TryAdd (c, instr)) {
+//					Debug.Assert (Context.InstructionMap[c].ToString () == instr.ToString ());
 				}
 
 				// insert into suffix tree
-				SuffixTree.ExtendTree (c);
-				sb.Append (c);
+				//SuffixTree.ExtendTree (c);
+				Context.InstructionSequence.Add (c);
+
+				Console.Write(c.ToString("X8"));
+				Console.WriteLine(": " + instr.ToString ());
 			}
 
 			// insert a unique terminator for each method body
-			var terminator = (char) method.GetHashCode ();
-			SuffixTree.ExtendTree (terminator);
-			sb.Append (terminator);
+			var terminator = method.GetHashCode ();
+//			SuffixTree.ExtendTree (terminator);
+			Context.InstructionSequence.Add (terminator);
 
-			Console.WriteLine("Method: " + method);
-			var p = SuffixTree.PrintTree ();
-			Console.WriteLine(p);
+			Console.WriteLine(terminator.ToString ("X8") + " (terminator)");
+//			Convert.ToString(terminator, 16));
+			Console.WriteLine();
+
+//			Console.WriteLine("Method: " + method);
+//			var p = SuffixTree.PrintTree ();
+//			Console.WriteLine(p);
 		}
 
 		protected override void EndProcess() {
 			// print out longest subsequence
-			var chars = sb.ToString ();
-			Context.InstructionSequence = chars;
+
+			Context.SuffixArray = new SuffixArray.SuffixArray<int>(Context.InstructionSequence);
 		}
 	}
 }
