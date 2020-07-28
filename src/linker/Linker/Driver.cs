@@ -1195,6 +1195,7 @@ namespace Mono.Linker
 			p.AppendStep (new SweepStep ());
 			p.AppendStep (new CodeRewriterStep ());
 			p.AppendStep (new OutlinerStep ());
+			p.AppendStep (new OutlineRewriterStep ());
 			p.AppendStep (new CleanStep ());
 			p.AppendStep (new RegenerateGuidStep ());
 			p.AppendStep (new OutputStep ());

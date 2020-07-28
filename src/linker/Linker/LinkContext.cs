@@ -32,6 +32,7 @@ using System.Diagnostics;
 using System.IO;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using SuffixTree;
 
 namespace Mono.Linker
 {
@@ -64,6 +65,27 @@ namespace Mono.Linker
 
 		readonly AnnotationStore _annotations;
 		readonly CustomAttributeSource _customAttributes;
+
+		SuffixTree.SuffixTree _suffixTree;
+
+		Dictionary<char, Instruction> _instructionMap;
+
+		string _instructionSequence;
+
+		public string InstructionSequence {
+			get => _instructionSequence;
+			set => _instructionSequence = value;
+		}
+
+		public SuffixTree.SuffixTree SuffixTree {
+			get => _suffixTree;
+			set => _suffixTree = value;
+		}
+
+		public Dictionary<char, Instruction> InstructionMap {
+			get => _instructionMap;
+			set => _instructionMap = value;
+		}
 
 		public Pipeline Pipeline {
 			get { return _pipeline; }

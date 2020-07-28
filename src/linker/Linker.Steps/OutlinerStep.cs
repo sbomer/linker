@@ -12,17 +12,27 @@ namespace Mono.Linker.Steps
 {
 	public class OutlinerStep : BaseStep
 	{
-		SuffixTree.SuffixTree suffixTree;
 		StringBuilder sb;
-		Random random;
 		Dictionary<char, Instruction> instruction;
+
+		SuffixTree.SuffixTree SuffixTree {
+			get => Context.SuffixTree;
+		}
+
+		Dictionary<char, Instruction> InstructionMap {
+			get => Context.InstructionMap;
+		}
 
 		public OutlinerStep ()
 		{
-			suffixTree = new SuffixTree.SuffixTree ();
-			random = new Random (23445903);
 			instruction = new Dictionary<char, Instruction> ();
 			sb = new StringBuilder ();
+		}
+
+		protected override void Process ()
+		{
+			Context.SuffixTree = new SuffixTree.SuffixTree ();
+			Context.InstructionMap = new Dictionary<char, Instruction> ();
 		}
 
 		protected override void ProcessAssembly (AssemblyDefinition assembly)
@@ -47,7 +57,7 @@ namespace Mono.Linker.Steps
 
 		void ProcessMethod (MethodDefinition method)
 		{
-			if (!(method.ToString ().Contains ("Mono.Linker.Tests.Cases.Outlining"))
+			if (!(method.ToString ().Contains ("Mono.Linker.Tests.Cases.Outlining")))
 //					method.ToString ().Contains ("Main")))
 				return;	
 
@@ -61,39 +71,24 @@ namespace Mono.Linker.Steps
 				}
 
 				// insert into suffix tree
-				suffixTree.ExtendTree (c);
+				SuffixTree.ExtendTree (c);
 				sb.Append (c);
 			}
 
 			// insert a unique terminator for each method body
 			var terminator = (char) method.GetHashCode ();
-			suffixTree.ExtendTree (terminator);
+			SuffixTree.ExtendTree (terminator);
 			sb.Append (terminator);
 
 			Console.WriteLine("Method: " + method);
-			var p = suffixTree.PrintTree ();
+			var p = SuffixTree.PrintTree ();
 			Console.WriteLine(p);
-		}
-		private string DecodeLabel(string chars) {
-			// utf-16 encoded string. I just want to get out one byte at a time, and
-			// represent it as a string. ignore endianness for now.
-			var bytes = Encoding.Unicode.GetBytes (chars);
-			return BitConverter.ToString(bytes).Replace("-", "");
 		}
 
 		protected override void EndProcess() {
 			// print out longest subsequence
 			var chars = sb.ToString ();
-			var (length, end) = suffixTree.GetLongestRepeatedSubstring();
-			var start = end - length;
-			Console.WriteLine("longest subsequence:");
-			var decoded = DecodeLabel(chars.Substring(start, length));
-			Console.WriteLine(decoded);
-			for (var i = start; i < end; i++) {
-				var c = chars[i];
-				var instr = instruction[c];
-				Console.WriteLine(instr.ToString ());
-			}
+			Context.InstructionSequence = chars;
 		}
 	}
 }
