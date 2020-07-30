@@ -83,7 +83,6 @@ namespace Mono.Linker.Steps
 			// TODO: debug this. why doesn't getting Object from the targetAsm's typesystem work?
 			var objectType = Context.Resolve("System.Private.CoreLib").FindType("System.Object");
 
-#if false
 
 			targetAsm = Context.Resolve ("console"); // TODO: get this more directly?
 			targetType = new TypeDefinition (
@@ -93,7 +92,7 @@ namespace Mono.Linker.Steps
 			);
 			targetAsm.MainModule.Types.Add (targetType);
 
-
+#if false
 			var duplicateMethods = Context.Resolve("console").FindType("console.Program").Methods.Where (m => m.Name == "Dup1" || m.Name == "Dup2");
 			var outlined = CreateEntireOutlinedMethod (duplicateMethods.First ());
 			foreach (var dup in duplicateMethods) {
@@ -107,13 +106,13 @@ namespace Mono.Linker.Steps
 #endif
 
 			// look for duplicates by hash
-			targetAsm = Context.Resolve ("System.Private.CoreLib");
-			targetType = new TypeDefinition (
-				"", "__OutlinedInstructionSequences__",
-				TypeAttributes.Public | TypeAttributes.Sealed, // TODO: pick proper TypeAttributes?
-				targetAsm.MainModule.ImportReference (objectType)
-			);
-			targetAsm.MainModule.Types.Add (targetType);
+// 			targetAsm = Context.Resolve ("System.Private.CoreLib");
+// 			targetType = new TypeDefinition (
+// 				"", "__OutlinedInstructionSequences__",
+// 				TypeAttributes.Public | TypeAttributes.Sealed, // TODO: pick proper TypeAttributes?
+// 				targetAsm.MainModule.ImportReference (objectType)
+// 			);
+// 			targetAsm.MainModule.Types.Add (targetType);
 
 			var numOutlinedMethods = 0;
 			var numOutlinedInstructions = 0;
@@ -135,14 +134,17 @@ namespace Mono.Linker.Steps
 					instructions.Add (Instruction.Create (OpCodes.Jmp, outlinedRef));
 
 					numReplacedMethods++;
-					numReplacedInstructions = outlined.Body.Instructions.Count;
+					numReplacedInstructions += outlined.Body.Instructions.Count;
 				}
 			};
 
-			var instructionCountDiff = -numReplacedInstructions + numReplacedMethods + numOutlinedInstructions;
+			var instructionCountDiff =
+				-numReplacedInstructions // removed instructions from callees
+				+ numReplacedMethods // one jmp instruction per callee
+				+ numOutlinedInstructions; // instructions of outlined methods
 
-			Console.WriteLine ("outlined " + numOutlinedMethods + " methods with " + numOutlinedInstructions);
-			Console.WriteLine ("replaced " + numReplacedInstructions + " across " + numReplacedMethods);
+			Console.WriteLine ("outlined " + numOutlinedMethods + " methods with " + numOutlinedInstructions + " instructions");
+			Console.WriteLine ("replaced " + numReplacedInstructions + " intsructions across " + numReplacedMethods + " methods");
 			Console.WriteLine ("diff in #instructions: " + instructionCountDiff);
 		}
 
@@ -171,12 +173,21 @@ namespace Mono.Linker.Steps
 		TypeDefinition targetType;
 		int intrinsicId = 0;
 
-		// DANGER: assumes a return type of String.
 		MethodDefinition CreateEntireOutlinedMethod(MethodDefinition method) {
+			var methodAttributes = (MethodAttributes)0;
+
+			methodAttributes |= MethodAttributes.Public;
+
+			if (method.IsStatic)
+				methodAttributes |= MethodAttributes.Static;
+
+			if (method.IsVirtual)
+				methodAttributes |= MethodAttributes.Virtual;
+
 			var targetMethod = new MethodDefinition(
 					intrinsicId.ToString (),
-					MethodAttributes.Public | MethodAttributes.Static,
-					targetType.Module.TypeSystem.String
+					methodAttributes,
+					method.ReturnType
 			);
 			intrinsicId++;
 
@@ -193,7 +204,19 @@ namespace Mono.Linker.Steps
 			targetType.Methods.Add (targetMethod);
 			var instructions = targetMethod.Body.Instructions;
 
+			var targetModule = targetMethod.Module;
 			foreach (var inst in method.Body.Instructions) {
+				// instructions that reference other members need to be able to access them
+				// from the target module
+				switch (inst.Operand) {
+				case MethodReference methodRef:
+					inst.Operand = targetModule.ImportReference (methodRef);
+					break;
+				case FieldReference fieldRef:
+					inst.Operand = targetModule.ImportReference (fieldRef);
+					break;
+				}
+
 				instructions.Add (inst);
 			}
 

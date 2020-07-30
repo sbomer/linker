@@ -1,8 +1,10 @@
 #!/usr/bin/env sh
 #         -p copy "console" \
 
-/home/sven/bin/dotnet "/home/sven/linker/artifacts/bin/Mono.Linker/Debug/netcoreapp3.0/illink.dll" -a "obj/Debug/net5.0/linux-x64/console.dll" \
-         -reference "obj/Debug/net5.0/linux-x64/console.dll" \
+config=Release
+
+/home/sven/bin/dotnet "/home/sven/linker/artifacts/bin/Mono.Linker/Debug/netcoreapp3.0/illink.dll" -a "obj/$config/net5.0/linux-x64/console.dll" \
+         -reference "obj/$config/net5.0/linux-x64/console.dll" \
          -reference "/home/sven/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/5.0.0-preview.8.20361.2/runtimes/linux-x64/lib/net5.0/Microsoft.CSharp.dll" \
          -reference "/home/sven/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/5.0.0-preview.8.20361.2/runtimes/linux-x64/lib/net5.0/Microsoft.VisualBasic.Core.dll" \
          -reference "/home/sven/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/5.0.0-preview.8.20361.2/runtimes/linux-x64/lib/net5.0/Microsoft.VisualBasic.dll" \
@@ -167,7 +169,7 @@
          -reference "/home/sven/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/5.0.0-preview.8.20361.2/runtimes/linux-x64/lib/net5.0/mscorlib.dll" \
          -reference "/home/sven/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/5.0.0-preview.8.20361.2/runtimes/linux-x64/lib/net5.0/netstandard.dll" \
          -reference "/home/sven/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/5.0.0-preview.8.20361.2/runtimes/linux-x64/native/System.Private.CoreLib.dll" \
-         -out "obj/Debug/net5.0/linux-x64/linked/" \
+         -out "obj/$config/net5.0/linux-x64/linked/" \
          -b \
          -c link -u link \
          --skip-unresolved true  \

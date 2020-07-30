@@ -404,11 +404,14 @@ namespace Mono.Linker.Steps
 			if (method.DeclaringType.HasGenericParameters)
 				return false;
 
+			if (method.IsVirtual)
+				return false;
+
 			// for now, only look for test methods we define...
-			// if (!(method.ToString ().Contains ("Mono.Linker.Tests.Cases.Outlining") ||
-			// 	method.ToString ().Contains(" console")
-			// ))
-//				return false;
+			if (!(method.ToString ().Contains ("Mono.Linker.Tests.Cases.Outlining") ||
+				method.ToString ().Contains(" console")
+			))
+				return false;
 
 			return true;
 		}
@@ -457,7 +460,7 @@ namespace Mono.Linker.Steps
 
 		int HashMethodBody (MethodDefinition method)
 		{
-			var hash = HashCode.Combine (method.Body.HasVariables, method.Body.Variables);
+			var hash = HashCode.Combine (method.Body.HasVariables, method.Body.Variables.Count);
 			hash = HashCode.Combine (hash, method.HasParameters);
 			if (method.HasParameters) {
 				foreach (var p in method.Parameters) {
@@ -467,8 +470,11 @@ namespace Mono.Linker.Steps
 			}
 			foreach (var instr in method.Body.Instructions) {
 				// TODO: fix GetHashCode in instructionAsInt.
-				hash = HashCode.Combine (hash, instructionAsInt.GetHashCode ());
+				hash = HashCode.Combine (hash, instructionAsInt.Get (instr).GetHashCode ());
 			}
+
+			hash = HashCode.Combine (hash, method.IsStatic);
+
 			return hash;
 		}
 
