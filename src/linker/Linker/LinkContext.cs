@@ -75,6 +75,14 @@ namespace Mono.Linker
 
 		List<int> _instructionSequence;
 
+		Dictionary<int, List<MethodDefinition>> _identicalMethods;
+
+
+		public Dictionary<int, List<MethodDefinition>> IdenticalMethods {
+			get => _identicalMethods;
+			set => _identicalMethods = value;
+		}
+
 		public List<int> InstructionSequence {
 			get => _instructionSequence;
 			set => _instructionSequence = value;

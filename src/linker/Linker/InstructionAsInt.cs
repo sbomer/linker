@@ -18,7 +18,7 @@ namespace Mono.Linker {
 		}
 
 		public override int GetHashCode () {
-			return HashCode.Combine (instr.OpCode, instr.Operand);
+			return str.GetHashCode ();
 		}
 
 		public override bool Equals (Object other) {
@@ -29,6 +29,26 @@ namespace Mono.Linker {
 
 			if (instr.OpCode != instrStr.instr.OpCode)
 				return false;
+
+			if (instr.ToString ().Contains("ldarg.s") || instrStr.instr.ToString ().Contains("ldarg.s"))
+				Console.WriteLine("hey");
+
+			var operand = instr.Operand;
+			var otherOperand = instrStr.instr.Operand;
+
+			if (operand == null && otherOperand == null)
+				return true;
+
+			if (operand == null || otherOperand == null)
+				return false;
+
+			if (operand.GetType () != otherOperand.GetType ())
+				return false;
+
+//			switch (instr.Operand) {
+//			case ParameterDefinition p:
+//				return p.Index == (otherOperand as ParameterDefinition).Index;
+//			}
 
 			// TODO: this uses reference equality for the operand.
 			if (instr.Operand != instr.Operand)
