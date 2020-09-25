@@ -261,6 +261,13 @@ namespace Mono.Linker.Tests.TestCasesRunner
 				.Select (CreateSetupCompileAssemblyInfo);
 		}
 
+		public virtual bool ShouldCompileAssembliesAfterForExpectations ()
+		{
+			return _testCaseTypeDefinition.CustomAttributes
+				.Where (attr => attr.AttributeType.Name == nameof (CompileAfterForExpectations))
+				.Any ();
+		}
+
 		public virtual IEnumerable<string> GetDefines ()
 		{
 			// There are a few tests related to native pdbs where the assertions are different between windows and non-windows

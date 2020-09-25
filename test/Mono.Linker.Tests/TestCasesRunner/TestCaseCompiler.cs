@@ -61,7 +61,7 @@ namespace Mono.Linker.Tests.TestCasesRunner
 			// The compile after step is used by tests to mess around with the input to the linker.  Generally speaking, it doesn't seem like we would ever want to mess with the
 			// expectations assemblies because this would undermine our ability to inspect them for expected results during ResultChecking.  The UnityLinker UnresolvedHandling tests depend on this
 			// behavior of skipping the after test compile
-			if (outputDirectory != _sandbox.ExpectationsDirectory)
+			if (outputDirectory != _sandbox.ExpectationsDirectory || _metadataProvider.ShouldCompileAssembliesAfterForExpectations ())
 				CompileAfterTestCaseAssemblies (outputDirectory, originalCommonReferences, originalDefines);
 
 			return testAssembly;

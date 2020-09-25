@@ -19,15 +19,16 @@
 
   <ItemGroup>
     <Compile Remove="Attributes\OnlyKeepUsed\Dependencies\UnusedAttributeWithTypeForwarderIsRemoved_Forwarder.cs" />
+    <Compile Remove="CommandLine\Dependencies\CustomStepDummy.cs" />
+    <Compile Remove="CommandLine\Dependencies\CustomStepUser.cs" />
+    <Compile Remove="Extensibility\Dependencies\*.cs" />
+    <Compile Remove="Inheritance.Interfaces\Dependencies\InterfaceV1.cs" />
     <Compile Remove="LinkXml\Dependencies\CanPreserveAnExportedType_Forwarder.cs" />
+    <Compile Remove="Logging\Dependencies\LogStep.cs" />
     <Compile Remove="TypeForwarding\Dependencies\ForwarderLibrary.cs" />
     <Compile Remove="TypeForwarding\Dependencies\ForwarderLibrary_2.cs" />
     <Compile Remove="TypeForwarding\Dependencies\ForwarderLibrary_3.cs" />
     <Compile Remove="TypeForwarding\Dependencies\ImplementationLibrary_3.cs" />
-    <Compile Remove="CommandLine\Dependencies\CustomStepDummy.cs" />
-    <Compile Remove="CommandLine\Dependencies\CustomStepUser.cs" />
-    <Compile Remove="Logging\Dependencies\LogStep.cs" />
-    <Compile Remove="Extensibility\Dependencies\*.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Attributes\OnlyKeepUsed\Dependencies\UnusedAttributeWithTypeForwarderIsRemoved_Forwarder.cs" />
@@ -35,17 +36,17 @@
     <Content Include="TypeForwarding\Dependencies\ForwarderLibrary.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="TypeForwarding\Dependencies\TypeForwarderMissingReference.il" />
     <Content Include="Attributes\OnlyKeepUsed\Dependencies\AssemblyWithUnusedAttributeOnReturnParameterDefinition.il" />
     <Content Include="Attributes\OnlyKeepUsed\Dependencies\AssemblyWithUnusedAttributeOnGenericParameter.il" />
+    <Content Include="TypeForwarding\Dependencies\TypeForwarderMissingReference.il" />
     <Content Include="CommandLine\Dependencies\ResponseFilesWork.rsp" />
     <Content Include="Inheritance.Interfaces\OnReferenceType\NoInstanceCtor\Dependencies\NoInstanceCtorAndAssemblyPreserveAll_Lib.il" />
-    <Content Include="UnreachableBody\Dependencies\OtherAssemblyNoInstanceCtor.il" />
     <Content Include="TestFramework\Dependencies\CanCompileReferencesWithResources_Lib1.txt" />
     <Content Include="TestFramework\Dependencies\CanCompileReferencesWithResources_Lib1.log" />
     <Content Include="TestFramework\Dependencies\CanCompileTestCaseWithCsc.txt" />
     <Content Include="TestFramework\Dependencies\CanCompileTestCaseWithMcs.txt" />
     <Content Include="TestFramework\Dependencies\VerifyResourceInAssemblyAttributesBehavior.txt" />
+    <Content Include="UnreachableBody\Dependencies\OtherAssemblyNoInstanceCtor.il" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mono.Linker.Tests.Cases.Expectations\Mono.Linker.Tests.Cases.Expectations.csproj" />
