@@ -33,6 +33,7 @@
     <Compile Remove="Linker.Steps\RemoveFeaturesStep.cs" />
     <Compile Remove="Linker.Steps\ResolveFromXApiStep.cs" />
     <Compile Remove="System.Diagnostics.CodeAnalysis\*.cs" />
+    <Compile Remove="Linker.Steps\MarkStep.Bak.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -90,7 +90,7 @@ namespace Mono.Linker.Steps
 				if (!Annotations.IsMarked (method))
 					continue;
 
-				var overrides = Annotations.GetOverrides (method);
+				var overrides = TypeMapInfo.GetBaseOverrides (method);
 
 				//
 				// cannot de-virtualize nor seal methods if something overrides them
@@ -105,7 +105,7 @@ namespace Mono.Linker.Steps
 				if (!type.IsSealed)
 					continue;
 
-				var bases = Annotations.GetBaseMethods (method);
+				var bases = TypeMapInfo.GetBaseMethods (method);
 				// Devirtualize if a method is not override to existing marked methods
 				if (!IsAnyMarked (bases))
 					method.IsVirtual = method.IsFinal = method.IsNewSlot = false;
@@ -134,7 +134,7 @@ namespace Mono.Linker.Steps
 			return false;
 		}
 
-		bool IsAnyMarked (List<MethodDefinition> list)
+		bool IsAnyMarked (IEnumerable<MethodDefinition> list)
 		{
 			if (list == null)
 				return false;

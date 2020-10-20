@@ -39,6 +39,7 @@ namespace Mono.Linker
 	public class UnintializedContextFactory
 	{
 		virtual public AnnotationStore CreateAnnotationStore (LinkContext context) => new AnnotationStore (context);
+		virtual public TypeMapInfo CreateTypeMapInfo (LinkContext context) => new TypeMapInfo ();
 		virtual public MarkingHelpers CreateMarkingHelpers (LinkContext context) => new MarkingHelpers (context);
 		virtual public Tracer CreateTracer (LinkContext context) => new Tracer (context);
 	}
@@ -65,6 +66,8 @@ namespace Mono.Linker
 		readonly AnnotationStore _annotations;
 		readonly CustomAttributeSource _customAttributes;
 
+		readonly TypeMapInfo _typeMapInfo;
+
 		public Pipeline Pipeline {
 			get { return _pipeline; }
 		}
@@ -75,6 +78,10 @@ namespace Mono.Linker
 
 		public AnnotationStore Annotations {
 			get { return _annotations; }
+		}
+
+		public TypeMapInfo TypeMapInfo {
+			get { return _typeMapInfo; }
 		}
 
 		public bool DeterministicOutput { get; set; }
@@ -227,6 +234,7 @@ namespace Mono.Linker
 				throw new ArgumentNullException (nameof (factory));
 
 			_annotations = factory.CreateAnnotationStore (this);
+			_typeMapInfo = factory.CreateTypeMapInfo (this);
 			MarkingHelpers = factory.CreateMarkingHelpers (this);
 			Tracer = factory.CreateTracer (this);
 			ReflectionPatternRecorder = new LoggingReflectionPatternRecorder (this);

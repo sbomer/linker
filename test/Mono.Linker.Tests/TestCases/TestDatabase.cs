@@ -47,6 +47,10 @@ namespace Mono.Linker.Tests.TestCases
 			return NUnitCasesBySuiteName ("Statics");
 		}
 
+		public static IEnumerable<TestCaseData> StressTests ()
+		{
+			return NUnitCasesBySuiteName ("Stress");
+		}
 		public static IEnumerable<TestCaseData> InteropTests ()
 		{
 			return NUnitCasesBySuiteName ("Interop");
@@ -205,13 +209,13 @@ namespace Mono.Linker.Tests.TestCases
 
 		public static TestCaseCollector CreateCollector ()
 		{
-			GetDirectoryPaths (out string rootSourceDirectory, out string testCaseAssemblyPath);
-			return new TestCaseCollector (rootSourceDirectory, testCaseAssemblyPath);
+			GetDirectoryPaths (out string rootSourceDirectory, out string testCaseAssemblyPath, out string generatedSourceDirectory);
+			return new TestCaseCollector (rootSourceDirectory, testCaseAssemblyPath, generatedSourceDirectory);
 		}
 
 		public static NPath TestCasesRootDirectory {
 			get {
-				GetDirectoryPaths (out string rootSourceDirectory, out string _);
+				GetDirectoryPaths (out string rootSourceDirectory, out string _, out string _);
 				return rootSourceDirectory.ToNPath ();
 			}
 		}
@@ -229,10 +233,15 @@ namespace Mono.Linker.Tests.TestCases
 
 		static IEnumerable<TestCaseData> NUnitCasesBySuiteName (string suiteName)
 		{
-			return AllCases ()
-				.Where (c => c.TestSuiteDirectory.FileName == suiteName)
-				.Select (c => CreateNUnitTestCase (c, c.DisplayName.Substring (suiteName.Length + 1)))
+			var allCases = AllCases ();
+			var where = allCases
+			// HERE
+				.Where (c => c.TestSuiteDirectory.FileName == suiteName);
+			var select = where
+				.Select (c => CreateNUnitTestCase (c, c.DisplayName.Substring (suiteName.Length + 1)));
+			var order = select
 				.OrderBy (c => c.TestName);
+			return order;
 		}
 
 		static TestCaseData CreateNUnitTestCase (TestCase testCase, string displayName)
@@ -242,7 +251,11 @@ namespace Mono.Linker.Tests.TestCases
 			return data;
 		}
 
-		static void GetDirectoryPaths (out string rootSourceDirectory, out string testCaseAssemblyPath, [CallerFilePath] string thisFile = null)
+		static void GetDirectoryPaths (
+			out string rootSourceDirectory,
+			out string testCaseAssemblyPath,
+			out string generatedSourceDirectory,
+			[CallerFilePath] string thisFile = null)
 		{
 
 #if DEBUG
@@ -261,18 +274,21 @@ namespace Mono.Linker.Tests.TestCases
 #error "Unknown TFM"
 #endif
 
+			var testCaseAssemblyName = "Mono.Linker.Tests.Cases";
 #if ILLINK
 			// Deterministic builds sanitize source paths, so CallerFilePathAttribute gives an incorrect path.
 			// Instead, get the testcase dll based on the working directory of the test runner.
 
 			// working directory is artifacts/bin/Mono.Linker.Tests/<config>/<tfm>
 			var artifactsBinDir = Path.Combine (Directory.GetCurrentDirectory (), "..", "..", "..");
-			rootSourceDirectory = Path.GetFullPath (Path.Combine (artifactsBinDir, "..", "..", "test", "Mono.Linker.Tests.Cases"));
-			testCaseAssemblyPath = Path.GetFullPath (Path.Combine (artifactsBinDir, "Mono.Linker.Tests.Cases", configDirectoryName, tfm, "Mono.Linker.Tests.Cases.dll"));
+			rootSourceDirectory = Path.GetFullPath (Path.Combine (artifactsBinDir, "..", "..", "test", testCaseAssemblyName));
+			testCaseAssemblyPath = Path.GetFullPath (Path.Combine (artifactsBinDir, testCaseAssemblyName, configDirectoryName, tfm, $"{testCaseAssemblyName}.dll"));
+			generatedSourceDirectory = Path.GetFullPath (Path.Combine (artifactsBinDir, "..", "obj", testCaseAssemblyName, configDirectoryName, tfm, "generated"));
 #else
 			var thisDirectory = Path.GetDirectoryName (thisFile);
-			rootSourceDirectory = Path.GetFullPath (Path.Combine (thisDirectory, "..", "..", "Mono.Linker.Tests.Cases"));
-			testCaseAssemblyPath = Path.GetFullPath (Path.Combine (rootSourceDirectory, "bin", configDirectoryName, tfm, "Mono.Linker.Tests.Cases.dll"));
+			rootSourceDirectory = Path.GetFullPath (Path.Combine (thisDirectory, "..", "..", testCaseAssemblyName));
+			testCaseAssemblyPath = Path.GetFullPath (Path.Combine (rootSourceDirectory, "bin", configDirectoryName, tfm, $"{testCaseAssemblyName}.dll"));
+			generatedSourceDirectory = null;
 #endif // ILLINK
 		}
 	}

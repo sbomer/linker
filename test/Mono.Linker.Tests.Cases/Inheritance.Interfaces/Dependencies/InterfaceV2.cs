@@ -21,4 +21,16 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces.Dependencies
 			foo.MethodDefault();
 		}
 	}
+
+	public interface IGenFoo<T>
+	{
+		void Method (T t);
+	}
+
+	public interface IGenBar<T> : IGenFoo<T>
+	{
+		void BarMethod (T t);
+
+		void IGenFoo<T>.Method(T t) { }
+	}
 }

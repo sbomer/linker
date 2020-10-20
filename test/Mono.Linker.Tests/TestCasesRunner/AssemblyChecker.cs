@@ -196,7 +196,7 @@ namespace Mono.Linker.Tests.TestCasesRunner
 					}
 				}
 
-				Assert.IsEmpty (expectedInterfaces, $"Unexpected interfaces on {src}");
+				Assert.IsEmpty (expectedInterfaces, $"Type `{src}` interfaces should have been kept.");
 			}
 		}
 
@@ -750,7 +750,7 @@ namespace Mono.Linker.Tests.TestCasesRunner
 		protected static uint GetExpectedPseudoAttributeValue (ICustomAttributeProvider provider, uint sourceValue)
 		{
 			var removals = provider.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (RemovedPseudoAttributeAttribute)).ToArray ();
-			var adds = provider.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (AddedPseudoAttributeAttribute)).ToArray ();
+			var adds = provider.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (AddedPseudoAttribute)).ToArray ();
 
 			return removals.Aggregate (sourceValue, (accum, item) => accum & ~((uint) item.ConstructorArguments[0].Value)) |
 				adds.Aggregate ((uint) 0, (acum, item) => acum | (uint) item.ConstructorArguments[0].Value);

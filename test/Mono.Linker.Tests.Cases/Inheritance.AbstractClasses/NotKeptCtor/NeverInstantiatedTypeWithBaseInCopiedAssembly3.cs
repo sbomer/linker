@@ -24,7 +24,7 @@ namespace Mono.Linker.Tests.Cases.Inheritance.AbstractClasses.NotKeptCtor
 		class Foo : Base2
 		{
 			// This method can be removed because the type is never instantiated and the base class
-			// will keep it's override in order to keep the IL valid
+			// will keep its override in order to keep the IL valid
 			public override void Method ()
 			{
 			}

@@ -2,15 +2,32 @@
 
   <PropertyGroup>
     <DefineConstants>$(DefineConstants);INCLUDE_EXPECTATIONS</DefineConstants>
-    <WarningLevel>0</WarningLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <LangVersion>Latest</LangVersion>
+    <WarningLevel>0</WarningLevel>
+    <LangVersion>preview</LangVersion>
   </PropertyGroup>
+
+  <Target Name="Sven">
+    <Message Importance="High" Text="Int: $(IntermediateOutputPath)" />
+  </Target>
+
+  <Target Name="SetPrope" BeforeTargets="Build">
+    <PropertyGroup>
+      <!-- TODO: once https://github.com/dotnet/roslyn/pull/47047/files flows, simply set EmitCompilerGeneratedFiles instead. -->
+    </PropertyGroup>
+  </Target>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="CompilerGeneratedFilesOutputPath" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(MonoBuild)' == ''">
     <TargetFramework>net5.0</TargetFramework>
     <DefineConstants>$(DefineConstants);ILLINK</DefineConstants>
+    <!-- This is set in a target so that IntermediateOutputPath is initialized correctly. -->
+    <!-- Can't use IntermediateOutputPath, because that doesn't have the TFM set correctly. -->
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/generated</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(MonoBuild)' != ''">
@@ -22,7 +39,7 @@
     <Compile Remove="CommandLine\Dependencies\CustomStepDummy.cs" />
     <Compile Remove="CommandLine\Dependencies\CustomStepUser.cs" />
     <Compile Remove="Extensibility\Dependencies\*.cs" />
-    <Compile Remove="Inheritance.Interfaces\Dependencies\InterfaceV1.cs" />
+    <Compile Remove="Inheritance.Interfaces\Dependencies\InterfaceV2.cs" />
     <Compile Remove="LinkXml\Dependencies\CanPreserveAnExportedType_Forwarder.cs" />
     <Compile Remove="Logging\Dependencies\LogStep.cs" />
     <Compile Remove="TypeForwarding\Dependencies\ForwarderLibrary.cs" />
@@ -50,6 +67,13 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mono.Linker.Tests.Cases.Expectations\Mono.Linker.Tests.Cases.Expectations.csproj" />
+    <ProjectReference Include="..\Mono.Linker.Tests.Cases.Generator\Mono.Linker.Tests.Cases.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+<!--    <ProjectReference Include="..\SourceGeneratorSamples\SourceGeneratorSamples.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+                      -->
   </ItemGroup>
   <ItemGroup>
     <None Include="TestFramework\Dependencies\ILAssemblySample.il" />

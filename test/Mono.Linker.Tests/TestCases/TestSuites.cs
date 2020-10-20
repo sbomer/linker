@@ -49,6 +49,12 @@ namespace Mono.Linker.Tests.TestCases
 			Run (testCase);
 		}
 
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.StressTests))]
+		public void StressTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
 		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.CoreLinkTests))]
 		public void CoreLinkTests (TestCase testCase)
 		{

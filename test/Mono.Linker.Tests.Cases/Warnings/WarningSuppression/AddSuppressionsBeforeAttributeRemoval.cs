@@ -15,7 +15,7 @@ namespace Mono.Linker.Tests.Cases.Warnings.WarningSuppression
 	{
 		public static Type TriggerUnrecognizedPattern ()
 		{
-			return typeof (AddedPseudoAttributeAttribute);
+			return typeof (AddedPseudoAttribute);
 		}
 
 		[UnconditionalSuppressMessage ("ILLinker", "IL2067")]

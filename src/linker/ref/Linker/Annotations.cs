@@ -12,8 +12,6 @@ namespace Mono.Linker
 	{
 		internal AnnotationStore () { }
 
-		public IEnumerable<OverrideInformation> GetOverrides (MethodDefinition method) { throw null; }
-
 		public void Mark (IMetadataTokenProvider provider) { throw null; }
 		public void Mark (CustomAttribute attribute) { throw null; }
 

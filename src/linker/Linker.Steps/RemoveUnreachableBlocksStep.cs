@@ -151,6 +151,9 @@ namespace Mono.Linker.Steps
 			//
 			// Re-run the analyzer in case body change rewrote it to constant expression
 			//
+			// This will not necessarily be inlined into callers - it depends on the order of processing.
+			// It would be more correct to re-process callers of this method.
+			// Right now, this is order-dependent.
 			var analyzer = new ConstantExpressionMethodAnalyzer (method, reducer.FoldedInstructions);
 			if (analyzer.Analyze ()) {
 				constExprMethods[method] = analyzer.Result;

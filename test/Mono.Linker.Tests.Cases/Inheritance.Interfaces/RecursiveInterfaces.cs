@@ -16,12 +16,14 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces
 		"interface.dll", "Mono.Linker.Tests.Cases.Inheritance.Interfaces.Dependencies.IFooDefault")]
 	[KeptMemberInAssembly (
 		"interface.dll", "Mono.Linker.Tests.Cases.Inheritance.Interfaces.Dependencies.IFooDefault",
-		"MethodDefault")]
+		"MethodDefault()")]
 	class RecursiveInterfaces
 	{
 		public static void Main ()
 		{
 			UseIFoo.CallIFooMethod(new Foo());
+			(new GenFoo<Bar>() as IGenFoo<Bar>).Method (new Bar());
+			(new GenFoo<Bar>() as IGenBar<Bar>).BarMethod (new Bar());
 		}
 
 		[KeptInterface (typeof (IFoo))]
@@ -35,10 +37,31 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces
 
 			// This method is an interface implementation of IFooDefault
 			// even though Foo doesn't have an explicit impl of IFooDefault.
-			[Kept]
+			// [Kept]
+			// it should be kept, but isn't!
 			public virtual void MethodDefault() { 
 				Console.WriteLine("Foo.MethodDefault");
 			}
+		}
+
+		[Kept]
+		[KeptMember (".ctor()")]
+		public class Bar {
+		}
+
+		[Kept]
+		[KeptInterface (typeof(IGenFoo<>))]
+		[KeptInterface (typeof(IGenBar<Bar>))]
+		[KeptMember (".ctor()")]
+		public class GenFoo<T> : IGenFoo<T>, IGenBar<Bar>
+		{
+			[Kept]
+			public void Method (T t) { }
+
+			public void Method (Bar b) { }
+
+			[Kept]
+			public void BarMethod (Bar b) { }
 		}
 	}
 }

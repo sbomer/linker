@@ -27,6 +27,8 @@
 //
 
 using Mono.Cecil;
+using System.Diagnostics;
+using System;
 
 namespace Mono.Linker.Steps
 {
@@ -43,6 +45,9 @@ namespace Mono.Linker.Steps
 		public AnnotationStore Annotations {
 			get { return _context.Annotations; }
 		}
+		public TypeMapInfo TypeMapInfo {
+			get { return _context.TypeMapInfo; }
+		}
 
 		public Tracer Tracer {
 			get { return _context.Tracer; }
@@ -52,6 +57,9 @@ namespace Mono.Linker.Steps
 
 		public void Process (LinkContext context)
 		{
+			// System.Console.Error.WriteLine($"Begin {this.GetType()}");
+			Stopwatch stopWatch = new Stopwatch();
+			stopWatch.Start();
 			_context = context;
 
 			if (!ConditionToProcess ())
@@ -63,6 +71,11 @@ namespace Mono.Linker.Steps
 				ProcessAssembly (assembly);
 
 			EndProcess ();
+			TimeSpan ts = stopWatch.Elapsed;
+			string elapsedTime = String.Format("{0:00}:{1:00}:{2:00}.{3:00}",
+				ts.Hours, ts.Minutes, ts.Seconds,
+				ts.Milliseconds / 10);
+			System.Console.Error.WriteLine($"Took {elapsedTime} for {this.GetType()}");
 		}
 
 		protected virtual bool ConditionToProcess ()

@@ -1,5 +1,6 @@
 ﻿using System;
 using Mono.Cecil;
+using Mono.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -68,6 +69,52 @@ namespace Mono.Linker
 			return sb;
 		}
 
+
+		// TODO: write tests for generic overrides...
+		// public static TypeReference GetInflatedDeclaringType (this MethodReference method)
+		// {
+		// 	if (method is GenericInstanceMethod genericInstance) {
+		// 	}
+		// }
+
+		// TODO: is this really necessary?
+		public static TypeReference GetInflatedDeclaringType (this TypeReference type)
+		{
+			if (type == null)
+				return null;
+
+			if (type.IsGenericParameter || type.IsByReference || type.IsPointer)
+				return null;
+
+			if (type is SentinelType sentinelType)
+				return sentinelType.ElementType.GetInflatedDeclaringType ();
+
+			if (type is PinnedType pinnedType)
+				return pinnedType.ElementType.GetInflatedDeclaringType ();
+
+			if (type is RequiredModifierType requiredModifierType)
+				return requiredModifierType.ElementType.GetInflatedDeclaringType ();
+
+			if (type is GenericInstanceType genericInstance) {
+				var declaringType = genericInstance.DeclaringType;
+
+				if (declaringType.HasGenericParameters) {
+					var result = new GenericInstanceType (declaringType);
+					for (var i = 0; i < declaringType.GenericParameters.Count; ++i)
+						result.GenericArguments.Add (genericInstance.GenericArguments[i]);
+
+					return result;
+				}
+
+				return declaringType;
+			}
+
+			var resolved = type.Resolve ();
+			System.Diagnostics.Debug.Assert (resolved == type);
+			return resolved?.DeclaringType;
+		}
+
+
 		internal static void PrependGenericParameters (IList<GenericParameter> genericParameters, StringBuilder sb)
 		{
 			sb.Insert (0, '>').Insert (0, genericParameters[genericParameters.Count - 1]);
@@ -135,42 +182,6 @@ namespace Mono.Linker
 			return type.Resolve ()?.BaseType;
 		}
 
-		public static TypeReference GetInflatedDeclaringType (this TypeReference type)
-		{
-			if (type == null)
-				return null;
-
-			if (type.IsGenericParameter || type.IsByReference || type.IsPointer)
-				return null;
-
-			if (type is SentinelType sentinelType)
-				return sentinelType.ElementType.GetInflatedDeclaringType ();
-
-			if (type is PinnedType pinnedType)
-				return pinnedType.ElementType.GetInflatedDeclaringType ();
-
-			if (type is RequiredModifierType requiredModifierType)
-				return requiredModifierType.ElementType.GetInflatedDeclaringType ();
-
-			if (type is GenericInstanceType genericInstance) {
-				var declaringType = genericInstance.DeclaringType;
-
-				if (declaringType.HasGenericParameters) {
-					var result = new GenericInstanceType (declaringType);
-					for (var i = 0; i < declaringType.GenericParameters.Count; ++i)
-						result.GenericArguments.Add (genericInstance.GenericArguments[i]);
-
-					return result;
-				}
-
-				return declaringType;
-			}
-
-			var resolved = type.Resolve ();
-			System.Diagnostics.Debug.Assert (resolved == type);
-			return resolved?.DeclaringType;
-		}
-
 		public static IEnumerable<(TypeReference InflatedInterface, InterfaceImplementation OriginalImpl)> GetInflatedInterfaces (this TypeReference typeRef)
 		{
 			var typeDef = typeRef.Resolve ();
@@ -178,12 +189,28 @@ namespace Mono.Linker
 			if (typeDef?.HasInterfaces != true)
 				yield break;
 
+
 			if (typeRef is GenericInstanceType genericInstance) {
 				foreach (var interfaceImpl in typeDef.Interfaces)
 					yield return (InflateGenericType (genericInstance, interfaceImpl.InterfaceType), interfaceImpl);
 			} else {
 				foreach (var interfaceImpl in typeDef.Interfaces)
 					yield return (interfaceImpl.InterfaceType, interfaceImpl);
+			}
+		}
+
+		public static (TypeReference InflatedInterface, InterfaceImplementation OriginalImpl) GetInflatedInterface (this TypeReference typeRef, InterfaceImplementation impl)
+		{
+			var typeDef = typeRef.Resolve ();
+
+			// TODO
+			if (typeDef == null)
+				throw new Exception();
+
+			if (typeRef is GenericInstanceType genericInstance) {
+				return (InflateGenericType (genericInstance, impl.InterfaceType), impl);
+			} else {
+				return (impl.InterfaceType, impl);
 			}
 		}
 
@@ -300,7 +327,7 @@ namespace Mono.Linker
 			}
 		}
 
-		private static MethodReference MakeMethodReferenceForGenericInstanceType (GenericInstanceType genericInstanceType, MethodDefinition methodDef)
+		public static MethodReference MakeMethodReferenceForGenericInstanceType (GenericInstanceType genericInstanceType, MethodDefinition methodDef)
 		{
 			var method = new MethodReference (methodDef.Name, methodDef.ReturnType, genericInstanceType) {
 				HasThis = methodDef.HasThis,

@@ -12,16 +12,18 @@ namespace Mono.Linker.Tests.TestCasesRunner
 	{
 		private readonly NPath _rootDirectory;
 		private readonly NPath _testCaseAssemblyPath;
+		private readonly NPath _generatedSourceDirectory;
 
-		public TestCaseCollector (string rootDirectory, string testCaseAssemblyPath)
-			: this (rootDirectory.ToNPath (), testCaseAssemblyPath.ToNPath ())
+		public TestCaseCollector (string rootDirectory, string testCaseAssemblyPath, string generatedSourceDirectory)
+			: this (rootDirectory.ToNPath (), testCaseAssemblyPath.ToNPath (), generatedSourceDirectory.ToNPath ())
 		{
 		}
 
-		public TestCaseCollector (NPath rootDirectory, NPath testCaseAssemblyPath)
+		public TestCaseCollector (NPath rootDirectory, NPath testCaseAssemblyPath, NPath generatedSourceDirectory)
 		{
 			_rootDirectory = rootDirectory;
 			_testCaseAssemblyPath = testCaseAssemblyPath;
+			_generatedSourceDirectory = generatedSourceDirectory;
 		}
 
 		public IEnumerable<TestCase> Collect ()
@@ -37,6 +39,7 @@ namespace Mono.Linker.Tests.TestCasesRunner
 		public IEnumerable<TestCase> Collect (IEnumerable<NPath> sourceFiles)
 		{
 			_rootDirectory.DirectoryMustExist ();
+			_generatedSourceDirectory.DirectoryMustExist ();
 			_testCaseAssemblyPath.FileMustExist ();
 
 			using (var caseAssemblyDefinition = AssemblyDefinition.ReadAssembly (_testCaseAssemblyPath.ToString ())) {
@@ -47,21 +50,20 @@ namespace Mono.Linker.Tests.TestCasesRunner
 			}
 		}
 
-		public IEnumerable<NPath> AllSourceFiles ()
+		public static IEnumerable<NPath> SourceFiles (NPath sourceDirectory)
 		{
-			_rootDirectory.DirectoryMustExist ();
+			sourceDirectory.DirectoryMustExist ();
 
-			foreach (var file in _rootDirectory.Files ("*.cs")) {
+			foreach (var file in sourceDirectory.Files ("*.cs"))
 				yield return file;
-			}
 
-			foreach (var subDir in _rootDirectory.Directories ()) {
+			foreach (var subDir in sourceDirectory.Directories ()) {
 				if (subDir.FileName == "bin" || subDir.FileName == "obj" || subDir.FileName == "Properties")
 					continue;
 
 				foreach (var file in subDir.Files ("*.cs", true)) {
 
-					var relativeParents = file.RelativeTo (_rootDirectory);
+					var relativeParents = file.RelativeTo (sourceDirectory);
 					// Magic : Anything in a directory named Dependencies is assumed to be a dependency to a test case
 					// and never a test itself
 					// This makes life a little easier when writing these supporting files as it removes some constraints you would previously have
@@ -76,6 +78,15 @@ namespace Mono.Linker.Tests.TestCasesRunner
 					yield return file;
 				}
 			}
+		}
+
+		public IEnumerable<NPath> AllSourceFiles ()
+		{
+			foreach (var file in SourceFiles (_rootDirectory))
+				yield return file;
+
+			foreach (var file in SourceFiles (_generatedSourceDirectory))
+				yield return file;
 		}
 
 		public TestCase CreateIndividualCase (Type testCaseType)
@@ -96,7 +107,12 @@ namespace Mono.Linker.Tests.TestCasesRunner
 
 		private bool CreateCase (AssemblyDefinition caseAssemblyDefinition, NPath sourceFile, out TestCase testCase)
 		{
-			var potentialCase = new TestCase (sourceFile, _rootDirectory, _testCaseAssemblyPath);
+			var sourceRoot =
+				sourceFile.IsChildOf (_rootDirectory) ? _rootDirectory :
+				sourceFile.IsChildOf (_generatedSourceDirectory) ? _generatedSourceDirectory :
+				throw new ArgumentException (nameof (sourceFile));
+
+			var potentialCase = new TestCase (sourceFile, sourceRoot, _testCaseAssemblyPath);
 
 			var typeDefinition = FindTypeDefinition (caseAssemblyDefinition, potentialCase);
 

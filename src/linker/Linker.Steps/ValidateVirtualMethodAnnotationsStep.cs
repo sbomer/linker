@@ -13,7 +13,7 @@ namespace Mono.Linker.Steps
 		{
 			var annotations = Context.Annotations;
 			foreach (var method in annotations.VirtualMethodsWithAnnotationsToValidate) {
-				var baseMethods = annotations.GetBaseMethods (method);
+				var baseMethods = TypeMapInfo.GetBaseMethods (method);
 				if (baseMethods != null) {
 					foreach (var baseMethod in baseMethods) {
 						annotations.FlowAnnotations.ValidateMethodAnnotationsAreSame (method, baseMethod);
@@ -21,7 +21,7 @@ namespace Mono.Linker.Steps
 					}
 				}
 
-				var overrides = annotations.GetOverrides (method);
+				var overrides = TypeMapInfo.GetBaseOverrides (method);
 				if (overrides != null) {
 					foreach (var overrideInformation in overrides) {
 						// Skip validation for cases where both base and override are in the list, we will validate the edge

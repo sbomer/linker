@@ -12,7 +12,7 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces.OnReferenceType
 		}
 
 		interface IFoo
-		{
+		{	
 			[Kept]
 			void Foo ();
 		}
@@ -20,7 +20,6 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces.OnReferenceType
 		[KeptMember (".ctor()")]
 		class B
 		{
-			[Kept] // FIXME: Needs to be removed
 			public void Foo ()
 			{
 			}

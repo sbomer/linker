@@ -7,7 +7,7 @@ using Mono.Linker.Tests.Cases.Expectations.Metadata;
 namespace Mono.Linker.Tests.Cases.Sealer
 {
 	[SetupLinkerArgument ("--enable-opt", "sealer")]
-	[AddedPseudoAttributeAttribute ((uint) TypeAttributes.Sealed)]
+	[AddedPseudoAttribute ((uint) TypeAttributes.Sealed)]
 	public class MethodsDevirtualization
 	{
 		public static void Main ()
@@ -43,12 +43,14 @@ namespace Mono.Linker.Tests.Cases.Sealer.Data
 		}
 
 		[Kept]
-		[AddedPseudoAttributeAttribute ((uint) MethodAttributes.Final)]
+		[AddedPseudoAttribute ((uint) MethodAttributes.Final)]
 		public virtual bool A () => true;
+
 		[Kept]
 		public virtual bool B () => false;
+
 		[Kept]
-		[AddedPseudoAttributeAttribute ((uint) MethodAttributes.Final)]
+		[AddedPseudoAttribute ((uint) MethodAttributes.Final)]
 		public virtual bool C () => false;
 		[Kept]
 		public virtual bool D () => false;
@@ -56,7 +58,7 @@ namespace Mono.Linker.Tests.Cases.Sealer.Data
 
 	[Kept]
 	[KeptBaseType (typeof (BaseClassMethods))]
-	[AddedPseudoAttributeAttribute ((uint) TypeAttributes.Sealed)]
+	[AddedPseudoAttribute ((uint) TypeAttributes.Sealed)]
 	public class Sealable : BaseClassMethods
 	{
 		[Kept]
@@ -65,12 +67,12 @@ namespace Mono.Linker.Tests.Cases.Sealer.Data
 		}
 
 		[Kept]
-		[AddedPseudoAttributeAttribute ((uint) MethodAttributes.Final)]
+		[AddedPseudoAttribute ((uint) MethodAttributes.Final)]
 		public override bool B () => true;
 
 		[Kept]
-		[RemovedPseudoAttributeAttribute ((uint) MethodAttributes.Virtual)]
-		[RemovedPseudoAttributeAttribute ((uint) MethodAttributes.VtableLayoutMask)]
+		[RemovedPseudoAttribute ((uint) MethodAttributes.Virtual)]
+		[RemovedPseudoAttribute ((uint) MethodAttributes.VtableLayoutMask)]
 		public virtual bool B2 () => false;
 
 		[Kept]
@@ -94,7 +96,7 @@ namespace Mono.Linker.Tests.Cases.Sealer.Data
 
 	[Kept]
 	[KeptBaseType (typeof (BaseAbstractClassMethods))]
-	[AddedPseudoAttributeAttribute ((uint) TypeAttributes.Sealed)]
+	[AddedPseudoAttribute ((uint) TypeAttributes.Sealed)]
 	public class SealableAbstract : BaseAbstractClassMethods
 	{
 		[Kept]
@@ -103,7 +105,7 @@ namespace Mono.Linker.Tests.Cases.Sealer.Data
 		}
 
 		[Kept]
-		[AddedPseudoAttributeAttribute ((uint) MethodAttributes.Final)]
+		[AddedPseudoAttribute ((uint) MethodAttributes.Final)]
 		public override bool A () => true;
 	}
 
@@ -129,7 +131,7 @@ namespace Mono.Linker.Tests.Cases.Sealer.Data
 	[Kept]
 	[KeptBaseType (typeof (BaseA))]
 	[KeptInterface (typeof (IA))]
-	[AddedPseudoAttributeAttribute ((uint) TypeAttributes.Sealed)]
+	[AddedPseudoAttribute ((uint) TypeAttributes.Sealed)]
 	public class Subclass : BaseA, IA
 	{
 		[Kept]

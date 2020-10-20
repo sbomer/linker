@@ -1,9 +1,9 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
-// See the LICENSE file in the project root for more information.
+// See the LICENSE file in the project root for more infortion.
 
 using Mono.Cecil;
-
+using System.Collections.Generic;
 namespace Mono.Linker
 {
 	public static class MethodReferenceExtensions
@@ -38,6 +38,33 @@ namespace Mono.Linker
 			sb.Insert (0, '.').Insert (0, method.DeclaringType.GetDisplayName ());
 
 			return sb.ToString ();
+		}
+
+		public static IEnumerable<MethodReference> GetInflatedOverrides (this MethodReference methodRef)
+		{
+			var methodDef = methodRef.Resolve ();
+			if (methodDef == null)
+				yield break;
+			if (!methodDef.HasOverrides)
+				yield break;
+			foreach (var @override in methodDef.Overrides) {
+				var overrideDef = @override.Resolve ();
+				if (overrideDef == null)
+					continue;
+
+				TypeReference overrideDeclaringType = null;
+				if (methodRef.DeclaringType is GenericInstanceType methodGenericDeclaringType) {
+					overrideDeclaringType = TypeReferenceExtensions.InflateGenericType (methodGenericDeclaringType, @override.DeclaringType);
+				} else {
+					overrideDeclaringType = @override.DeclaringType;
+				}
+
+				if (overrideDeclaringType is GenericInstanceType genericInstanceType) {
+					yield return TypeReferenceExtensions.MakeMethodReferenceForGenericInstanceType (genericInstanceType, overrideDef);
+				} else {
+					yield return overrideDef;
+				}
+			}
 		}
 
 		public static TypeReference GetReturnType (this MethodReference method)

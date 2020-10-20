@@ -22,6 +22,14 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces.DefaultInterfaceMethods
 
 		interface IDefaultImpl : IFoo
 		{
+			// this is found during mapvirtualmethods, as explicit override
+			// NOTE: it is never tracked as a default interface implementation!
+			// because we only look for a default implementation of an interface method
+			// if we couldn't find a normal implementation on a type with interfaces.
+			// mapinterfacelogic will see IFoo.InterfaceMethod,
+			// but won't see it implemented on this type because name doesn't match.
+			// doesn't look for overrides.
+			// looks for default implementation - but only on interfaces (not current type)
 			void IFoo.InterfaceMethod ()
 			{
 			}
@@ -35,6 +43,7 @@ namespace Mono.Linker.Tests.Cases.Inheritance.Interfaces.DefaultInterfaceMethods
 			public Foo () { }
 
 			[Kept]
+			// this is found during MapInterfaceMethods, as on-type implementation of IFoo.InterfaceMethod
 			public void InterfaceMethod ()
 			{
 			}
