@@ -6,19 +6,16 @@ using Mono.Linker.Tests.Cases.Expectations.Metadata;
 
 namespace Mono.Linker.Tests.Cases.DynamicDependencies
 {
-	/// <summary>
-	/// This is an acceptable bug with the currently implementation.  Embedded link xml files will not be processed
-	/// </summary>
 	[IgnoreDescriptors (false)]
 	[SetupCompileBefore ("base.dll", new[] { "Dependencies/DynamicDependencyMethodInNonReferencedAssemblyBase.cs" })]
 	[SetupCompileBefore (
 		"DynamicDependencyMethodInNonReferencedAssemblyLibrary.dll",
 		new[] { "Dependencies/DynamicDependencyMethodInNonReferencedAssemblyLibrary.cs" },
 		references: new[] { "base.dll" },
-		resources: new[] { "Dependencies/DynamicDependencyMethodInNonReferencedAssemblyLibrary.xml" },
+		resources: new object[] { "Dependencies/DynamicDependencyMethodInNonReferencedAssemblyLibrary.xml" },
 		addAsReference: false)]
 	[KeptAssembly ("base.dll")]
-	[RemovedMemberInAssembly ("DynamicDependencyMethodInNonReferencedAssemblyLibrary.dll", "Mono.Linker.Tests.Cases.DynamicDependencies.Dependencies.DynamicDependencyMethodInNonReferencedAssemblyLibrary", "UnusedMethod()")]
+	[KeptMemberInAssembly ("DynamicDependencyMethodInNonReferencedAssemblyLibrary.dll", "Mono.Linker.Tests.Cases.DynamicDependencies.Dependencies.DynamicDependencyMethodInNonReferencedAssemblyLibrary", "UnusedMethod()")]
 	public class DynamicDependencyMethodInNonReferencedAssemblyWithEmbeddedXml
 	{
 		public static void Main ()

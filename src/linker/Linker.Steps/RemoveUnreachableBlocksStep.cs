@@ -18,15 +18,20 @@ namespace Mono.Linker.Steps
 	{
 		Dictionary<MethodDefinition, Instruction> constExprMethods;
 		MethodDefinition IntPtrSize, UIntPtrSize;
+		readonly AssemblyDefinition assembly;
 
-		protected override void Process ()
+		public RemoveUnreachableBlocksStep (AssemblyDefinition assembly)
 		{
-			var assemblies = Context.Annotations.GetAssemblies ().ToArray ();
+			this.assembly = assembly;
+		}
+
+		protected override void ProcessAssembly (AssemblyDefinition assembly)
+		{
+			if (this.assembly != assembly)
+				return;
 
 			constExprMethods = new Dictionary<MethodDefinition, Instruction> ();
-			foreach (var assembly in assemblies) {
-				FindConstantExpressionsMethods (assembly.MainModule.Types);
-			}
+			FindConstantExpressionsMethods (assembly.MainModule.Types);
 
 			if (constExprMethods.Count == 0)
 				return;
@@ -38,12 +43,10 @@ namespace Mono.Linker.Steps
 				//
 				constExprMethodsCount = constExprMethods.Count;
 
-				foreach (var assembly in assemblies) {
-					if (Annotations.GetAction (assembly) != AssemblyAction.Link)
-						continue;
+				if (Annotations.GetAction (assembly) != AssemblyAction.Link)
+					continue;
 
-					RewriteBodies (assembly.MainModule.Types);
-				}
+				RewriteBodies (assembly.MainModule.Types);
 			} while (constExprMethodsCount < constExprMethods.Count);
 		}
 

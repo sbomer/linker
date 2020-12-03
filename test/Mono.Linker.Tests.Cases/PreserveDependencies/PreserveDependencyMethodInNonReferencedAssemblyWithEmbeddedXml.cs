@@ -5,9 +5,6 @@ using Mono.Linker.Tests.Cases.PreserveDependencies.Dependencies;
 
 namespace Mono.Linker.Tests.Cases.PreserveDependencies
 {
-	/// <summary>
-	/// This is an acceptable bug with the currently implementation.  Embedded link xml files will not be processed
-	/// </summary>
 	[IgnoreDescriptors (false)]
 	[SetupCompileBefore ("FakeSystemAssembly.dll", new[] { "Dependencies/PreserveDependencyAttribute.cs" })]
 	[SetupCompileBefore ("base.dll", new[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyBase.cs" })]
@@ -15,10 +12,10 @@ namespace Mono.Linker.Tests.Cases.PreserveDependencies
 		"PreserveDependencyMethodInNonReferencedAssemblyLibrary.dll",
 		new[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyLibrary.cs" },
 		references: new[] { "base.dll" },
-		resources: new[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyLibrary.xml" },
+		resources: new object[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyLibrary.xml",},
 		addAsReference: false)]
 	[KeptAssembly ("base.dll")]
-	[RemovedMemberInAssembly ("PreserveDependencyMethodInNonReferencedAssemblyLibrary.dll", "Mono.Linker.Tests.Cases.PreserveDependencies.Dependencies.PreserveDependencyMethodInNonReferencedAssemblyLibrary", "UnusedMethod()")]
+	[KeptMemberInAssembly ("PreserveDependencyMethodInNonReferencedAssemblyLibrary.dll", "Mono.Linker.Tests.Cases.PreserveDependencies.Dependencies.PreserveDependencyMethodInNonReferencedAssemblyLibrary", "UnusedMethod()")]
 	public class PreserveDependencyMethodInNonReferencedAssemblyWithEmbeddedXml
 	{
 		public static void Main ()

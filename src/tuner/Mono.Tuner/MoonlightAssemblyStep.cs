@@ -54,7 +54,6 @@ namespace Mono.Tuner {
 		protected virtual void CustomizePipeline (Pipeline pipeline)
 		{
 			pipeline.RemoveStep (typeof (LoadI18nAssemblies));
-			pipeline.RemoveStep (typeof (BlacklistStep));
 			pipeline.RemoveStep (typeof (TypeMapStep));
 			pipeline.RemoveStep (typeof (MarkStep));
 			pipeline.RemoveStep (typeof (SweepStep));

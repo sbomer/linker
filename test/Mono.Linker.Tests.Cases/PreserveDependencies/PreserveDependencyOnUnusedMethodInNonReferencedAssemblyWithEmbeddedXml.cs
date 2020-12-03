@@ -15,7 +15,7 @@ namespace Mono.Linker.Tests.Cases.PreserveDependencies
 		"PreserveDependencyMethodInNonReferencedAssemblyLibrary.dll",
 		new[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyLibrary.cs" },
 		references: new[] { "base.dll" },
-		resources: new[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyLibrary.xml" },
+		resources: new object[] { "Dependencies/PreserveDependencyMethodInNonReferencedAssemblyLibrary.xml" },
 		addAsReference: false)]
 	[KeptAssembly ("base.dll")]
 	[RemovedAssembly ("PreserveDependencyMethodInNonReferencedAssemblyLibrary.dll")]

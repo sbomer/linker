@@ -1,4 +1,4 @@
-﻿//
+//
 // SweepStep.cs
 //
 // Author:
@@ -48,7 +48,7 @@ namespace Mono.Linker.Steps
 
 		protected override void Process ()
 		{
-			assemblies = Context.Annotations.GetAssemblies ().ToArray ();
+			assemblies = Context.ReferencedAssemblies ().ToArray ();
 
 			foreach (var assembly in assemblies) {
 				RemoveUnusedAssembly (assembly);

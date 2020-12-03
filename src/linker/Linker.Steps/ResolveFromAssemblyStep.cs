@@ -61,7 +61,7 @@ namespace Mono.Linker.Steps
 		protected override void Process ()
 		{
 			if (_assembly != null)
-				Context.Resolver.CacheAssembly (_assembly);
+				Context.Resolver.CacheAssemblyWithPath (_assembly);
 
 			var ignoreUnresolved = Context.Resolver.IgnoreUnresolved;
 			Context.Resolver.IgnoreUnresolved = false;

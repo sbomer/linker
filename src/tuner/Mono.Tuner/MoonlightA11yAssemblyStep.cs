@@ -42,7 +42,6 @@ namespace Mono.Tuner {
 		protected override void CustomizePipeline (Pipeline pipeline)
 		{
 			pipeline.RemoveStep (typeof (LoadI18nAssemblies));
-			pipeline.RemoveStep (typeof (BlacklistStep));
 			pipeline.RemoveStep (typeof (MarkStep));
 			pipeline.RemoveStep (typeof (SweepStep));
 			pipeline.RemoveStep (typeof (CleanStep));

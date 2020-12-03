@@ -4,6 +4,7 @@ using Mono.Linker.Tests.Cases.Expectations.Metadata;
 
 namespace Mono.Linker.Tests.Cases.UnreachableBlock
 {
+	[IgnoreTestCase ("Cross-assembly constant propacation is not supported")]
 #if ILLINK
 	[SetupLinkerSubstitutionFile ("SizeOfInConditions.netcore.xml")]
 #else

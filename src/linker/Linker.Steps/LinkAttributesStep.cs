@@ -12,7 +12,7 @@ using Mono.Cecil;
 
 namespace Mono.Linker.Steps
 {
-	public class LinkAttributesStep : ProcessLinkerXmlStepBase
+	public class LinkAttributesStep : ProcessLinkerXmlBase
 	{
 		public LinkAttributesStep (XPathDocument document, string xmlDocumentLocation)
 			: base (document, xmlDocumentLocation)
@@ -156,7 +156,7 @@ namespace Mono.Linker.Steps
 		{
 			string assemblyName = GetAttribute (iterator.Current, "assembly");
 			if (string.IsNullOrEmpty (assemblyName)) {
-				attributeType = Context.GetType (attributeFullName);
+				attributeType = Context.TypeNameResolver.ResolveTypeName (attributeFullName, out AssemblyDefinition assembly)?.Resolve ();
 			} else {
 				AssemblyDefinition assembly;
 				try {
@@ -172,7 +172,7 @@ namespace Mono.Linker.Steps
 					return false;
 				}
 
-				attributeType = Context.TypeNameResolver.ResolveTypeNameInAssembly (assembly, attributeFullName)?.Resolve ();
+				attributeType = Context.TypeNameResolver.ResolveTypeName (assembly, attributeFullName)?.Resolve ();
 			}
 
 			if (attributeType == null) {
