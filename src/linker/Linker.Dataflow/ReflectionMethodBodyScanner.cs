@@ -1362,7 +1362,7 @@ namespace Mono.Linker.Dataflow
 								continue;
 							}
 
-							var typeRef = _context.TypeNameResolver.ResolveTypeNameInAssembly (resolvedAssembly, typeNameStringValue.Contents);
+							var typeRef = _context.TypeNameResolver.ResolveTypeName (resolvedAssembly, typeNameStringValue.Contents);
 							var resolvedType = typeRef?.Resolve ();
 							if (resolvedType == null || typeRef is ArrayType) {
 								// It's not wrong to have a reference to non-existing type - the code may well expect to get an exception in this case
