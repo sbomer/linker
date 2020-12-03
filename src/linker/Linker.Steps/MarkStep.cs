@@ -350,9 +350,6 @@ namespace Mono.Linker.Steps
 					if (!assembly.MainModule.HasExportedTypes)
 						continue;
 
-					// We may have resolved new type forwarder assemblies which have not been processed.
-					_context.ProcessReferenceClosure (assembly);
-
 					foreach (var exported in assembly.MainModule.ExportedTypes) {
 						bool isForwarder = exported.IsForwarder;
 						var declaringType = exported.DeclaringType;
@@ -665,7 +662,6 @@ namespace Mono.Linker.Steps
 					_context.LogWarning ($"Unresolved assembly '{dynamicDependency.AssemblyName}' in 'DynamicDependencyAttribute'", 2035, context);
 					return;
 				}
-				_context.ProcessReferenceClosure (assembly);
 			} else {
 				assembly = context.DeclaringType.Module.Assembly;
 				Debug.Assert (assembly != null);
@@ -775,7 +771,6 @@ namespace Mono.Linker.Steps
 						$"Could not resolve dependency assembly '{assemblyName}' specified in a 'PreserveDependency' attribute", 2003, context.Resolve ());
 					return;
 				}
-				_context.ProcessReferenceClosure (assembly);
 			} else {
 				assembly = null;
 			}
@@ -1605,10 +1600,7 @@ namespace Mono.Linker.Steps
 					TypeDefinition typeDef;
 					if (typeName is AssemblyQualifiedTypeName assemblyQualifiedTypeName) {
 						AssemblyDefinition assembly = _context.TryResolve (assemblyQualifiedTypeName.AssemblyName.Name);
-						if (assembly != null)
-							_context.ProcessReferenceClosure (assembly);
-						typeDef = _context.TypeNameResolver.ResolveTypeNameInAssembly (assembly, assemblyQualifiedTypeName.TypeName)?.Resolve ();
-						return typeDef;
+						return _context.TypeNameResolver.ResolveTypeNameInAssembly (assembly, assemblyQualifiedTypeName.TypeName)?.Resolve ();
 					}
 
 					typeDef = _context.TypeNameResolver.ResolveTypeNameInAssembly (asm, targetTypeName)?.Resolve ();
@@ -1706,8 +1698,6 @@ namespace Mono.Linker.Steps
 			switch (attribute.ConstructorArguments[0].Value) {
 			case string s:
 				tdef = _context.TypeNameResolver.ResolveTypeName (s, out AssemblyDefinition foundAssembly)?.Resolve ();
-				if (foundAssembly != null)
-					_context.ProcessReferenceClosure (foundAssembly);
 				// ResolveTypeName might resolve an assembly (or multiple assemblies for generic arguments...)
 				break;
 			case TypeReference type:

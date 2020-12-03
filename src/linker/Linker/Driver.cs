@@ -731,13 +731,6 @@ namespace Mono.Linker
 			// SealerStep
 			// OutputStep
 
-			//
-			// Pipeline Steps which run when new assemblies are processed
-			//
-			// LoadReferencesStep
-			// TypeMapStep
-			//
-
 			foreach (string custom_step in custom_steps) {
 				if (!AddCustomStep (p, custom_step))
 					return -1;
@@ -1227,8 +1220,6 @@ namespace Mono.Linker
 			p.AppendStep (new CleanStep ());
 			p.AppendStep (new RegenerateGuidStep ());
 			p.AppendStep (new OutputStep ());
-			p.AppendAssemblyStep (new LoadReferencesStep ());
-			p.AppendAssemblyStep (new TypeMapStep ());
 			return p;
 		}
 

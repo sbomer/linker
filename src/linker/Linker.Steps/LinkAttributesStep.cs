@@ -355,10 +355,7 @@ namespace Mono.Linker.Steps
 
 		protected override AssemblyDefinition GetAssembly (LinkContext context, AssemblyNameReference assemblyName)
 		{
-			var assembly = context.Resolve (assemblyName);
-			if (assembly != null)
-				context.ProcessReferenceClosure (assembly);
-			return assembly;
+			return context.Resolve (assemblyName);
 		}
 	}
 }

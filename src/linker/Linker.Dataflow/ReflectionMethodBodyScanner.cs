@@ -815,8 +815,6 @@ namespace Mono.Linker.Dataflow
 						foreach (var typeNameValue in methodParams[0].UniqueValues ()) {
 							if (typeNameValue is KnownStringValue knownStringValue) {
 								TypeReference foundTypeRef = _context.TypeNameResolver.ResolveTypeName (knownStringValue.Contents, out AssemblyDefinition foundAssembly);
-								if (foundAssembly != null)
-									_context.ProcessReferenceClosure (foundAssembly);
 								TypeDefinition foundType = foundTypeRef?.ResolveToMainTypeDefinition ();
 								if (foundType == null) {
 									// Intentionally ignore - it's not wrong for code to call Type.GetType on non-existing name, the code might expect null/exception back.
@@ -1363,7 +1361,6 @@ namespace Mono.Linker.Dataflow
 								reflectionContext.RecordUnrecognizedPattern (2061, $"The assembly name '{assemblyNameStringValue.Contents}' passed to method '{calledMethod.GetDisplayName ()}' references assembly which is not available.");
 								continue;
 							}
-							_context.ProcessReferenceClosure (resolvedAssembly);
 
 							var typeRef = _context.TypeNameResolver.ResolveTypeNameInAssembly (resolvedAssembly, typeNameStringValue.Contents);
 							var resolvedType = typeRef?.Resolve ();
@@ -1609,8 +1606,6 @@ namespace Mono.Linker.Dataflow
 					MarkTypeForDynamicallyAccessedMembers (ref reflectionContext, systemTypeValue.TypeRepresented, requiredMemberTypes);
 				} else if (uniqueValue is KnownStringValue knownStringValue) {
 					TypeReference typeRef = _context.TypeNameResolver.ResolveTypeName (knownStringValue.Contents, out AssemblyDefinition foundAssembly);
-					if (foundAssembly != null)
-						_context.ProcessReferenceClosure (foundAssembly);
 					TypeDefinition foundType = typeRef?.ResolveToMainTypeDefinition ();
 					if (foundType == null) {
 						// Intentionally ignore - it's not wrong for code to call Type.GetType on non-existing name, the code might expect null/exception back.
