@@ -73,7 +73,6 @@ namespace Mono.Linker.Steps
 					var assembly = Context.Resolve (new AssemblyNameReference (assemblyName, new Version ()));
 					if (assembly == null)
 						continue;
-					Context.ProcessReferenceClosure (assembly);
 				}
 			}
 
@@ -89,7 +88,6 @@ namespace Mono.Linker.Steps
 					Context.LogWarning ($"Unresolved assembly '{dynamicDependency.AssemblyName}' in 'DynamicDependencyAttribute'", 2035, member);
 					continue;
 				}
-				Context.ProcessReferenceClosure (assembly);
 			}
 		}
 
