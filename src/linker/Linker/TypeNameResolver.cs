@@ -26,9 +26,8 @@ namespace Mono.Linker
 			}
 		}
 
-		public TypeReference ResolveTypeName (string typeNameString, out AssemblyDefinition foundAssembly)
+		public TypeReference ResolveTypeName (string typeNameString)
 		{
-			foundAssembly = null;
 			if (string.IsNullOrEmpty (typeNameString))
 				return null;
 
@@ -36,15 +35,13 @@ namespace Mono.Linker
 				return null;
 
 			if (parsedTypeName is AssemblyQualifiedTypeName assemblyQualifiedTypeName)
-				return ResolveTypeName (null, assemblyQualifiedTypeName, out foundAssembly);
+				return ResolveTypeName (null, assemblyQualifiedTypeName);
 
 			var nonQualifiedTypeName = parsedTypeName as NonQualifiedTypeName;
 			foreach (var assemblyDefinition in _context.GetAssemblies ()) {
 				var foundType = ResolveTypeNameInAssembly (assemblyDefinition, nonQualifiedTypeName);
-				if (foundType != null) {
-					foundAssembly = assemblyDefinition;
+				if (foundType != null)
 					return foundType;
-				}
 			}
 
 			return null;
@@ -70,7 +67,7 @@ namespace Mono.Linker
 				TypeDefinition genericType = genericTypeRef.Resolve ();
 				var genericInstanceType = new GenericInstanceType (genericType);
 				foreach (var arg in constructedGenericTypeName.GenericArguments) {
-					var genericArgument = ResolveTypeName (assembly, arg, out _);
+					var genericArgument = ResolveTypeName (assembly, arg);
 					if (genericArgument == null)
 						return null;
 
@@ -79,7 +76,7 @@ namespace Mono.Linker
 
 				return genericInstanceType;
 			} else if (typeName is HasElementTypeName elementTypeName) {
-				var elementType = ResolveTypeName (assembly, elementTypeName.ElementTypeName, out _);
+				var elementType = ResolveTypeName (assembly, elementTypeName.ElementTypeName);
 				if (elementType == null)
 					return null;
 
@@ -96,18 +93,17 @@ namespace Mono.Linker
 			return assembly.MainModule.ResolveType (typeName.ToString ());
 		}
 
-		TypeReference ResolveTypeName (AssemblyDefinition assembly, TypeName typeName, out AssemblyDefinition foundAssembly)
+		TypeReference ResolveTypeName (AssemblyDefinition assembly, TypeName typeName)
 		{
 			if (typeName is AssemblyQualifiedTypeName assemblyQualifiedTypeName) {
 				// In this case we ignore the assembly parameter since the type name has assembly in it
 				// Resolving a type name should never throw.
-				foundAssembly = _context.TryResolve (assemblyQualifiedTypeName.AssemblyName.Name);
+				var foundAssembly = _context.TryResolve (assemblyQualifiedTypeName.AssemblyName.Name);
 				if (foundAssembly == null)
 					return null;
 				return ResolveTypeNameInAssembly (foundAssembly, assemblyQualifiedTypeName.TypeName);
 			}
 
-			foundAssembly = assembly;
 			return ResolveTypeNameInAssembly (assembly, typeName as NonQualifiedTypeName);
 		}
 	}
