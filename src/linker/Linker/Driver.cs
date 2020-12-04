@@ -651,34 +651,25 @@ namespace Mono.Linker
 #if !FEATURE_ILLINK
 			foreach (var file in resolve_from_xapi_steps)
 				p.PrependStep (new ResolveFromXApiStep (new XPathDocument (file)));
-#endif
-			foreach (var file in xml_custom_attribute_steps)
-				AddLinkAttributesStep (p, file);
 
+			p.AddStepBefore (typeof (MarkStep), new LoadI18nAssemblies (assemblies));
+#endif
 			foreach (var file in resolve_from_xml_steps)
 				AddResolveFromXmlStep (p, file);
 
 			foreach (var (file, rootVisibility) in resolve_from_assembly_steps)
 				p.PrependStep (new ResolveFromAssemblyStep (file, rootVisibility));
 
-			foreach (var file in body_substituter_steps)
-				AddBodySubstituterStep (p, file);
-
-			if (context.DeterministicOutput)
-				p.RemoveStep (typeof (RegenerateGuidStep));
-
-			if (context.AddReflectionAnnotations)
-				p.AddStepAfter (typeof (MarkStep), new ReflectionBlockedStep ());
+			foreach (var file in xml_custom_attribute_steps)
+				AddLinkAttributesStep (p, file);
 
 #if !FEATURE_ILLINK
-			p.AddStepBefore (typeof (DynamicDependencyLookupStep), new LoadI18nAssemblies (assemblies));
-
 			if (assemblies != I18nAssemblies.None)
-				p.AddStepAfter (typeof (DynamicDependencyLookupStep), new PreserveCalendarsStep (assemblies));
+				p.AddStepBefore (typeof (MarkStep), new PreserveCalendarsStep (assemblies));
 #endif
 
-			if (_needAddBypassNGenStep)
-				p.AddStepAfter (typeof (SweepStep), new AddBypassNGenStep ());
+			foreach (var file in body_substituter_steps)
+				AddBodySubstituterStep (p, file);
 
 			if (removeCAS)
 				p.AddStepBefore (typeof (MarkStep), new RemoveSecurityStep ());
@@ -698,6 +689,15 @@ namespace Mono.Linker
 			}
 #endif
 
+			if (context.AddReflectionAnnotations)
+				p.AddStepAfter (typeof (MarkStep), new ReflectionBlockedStep ());
+
+			if (_needAddBypassNGenStep)
+				p.AddStepAfter (typeof (SweepStep), new AddBypassNGenStep ());
+
+			if (context.DeterministicOutput)
+				p.RemoveStep (typeof (RegenerateGuidStep));
+
 			p.AddStepBefore (typeof (OutputStep), new SealerStep ());
 
 			//
@@ -708,7 +708,6 @@ namespace Mono.Linker
 			// [mono only] ResolveFromXApiStep [optional, possibly many]
 			// [mono only] LoadI18nAssemblies
 			// LinkAttributesStep [optional, possibly many]
-			// DynamicDependencyLookupStep
 			// [mono only] PreserveCalendarsStep [optional]
 			// BodySubstituterStep [optional]
 			// RemoveSecurityStep [optional]
@@ -814,7 +813,7 @@ namespace Mono.Linker
 
 		protected virtual void AddLinkAttributesStep (Pipeline pipeline, string file)
 		{
-			pipeline.AddStepBefore (typeof (DynamicDependencyLookupStep), new LinkAttributesStep (new XPathDocument (file), file));
+			pipeline.AddStepBefore (typeof (MarkStep), new LinkAttributesStep (new XPathDocument (file), file));
 		}
 
 		static void AddBodySubstituterStep (Pipeline pipeline, string file)
@@ -1203,7 +1202,6 @@ namespace Mono.Linker
 		static Pipeline GetStandardPipeline ()
 		{
 			Pipeline p = new Pipeline ();
-			p.AppendStep (new DynamicDependencyLookupStep ());
 			p.AppendStep (new MarkStep ());
 			p.AppendStep (new ValidateVirtualMethodAnnotationsStep ());
 			p.AppendStep (new ProcessWarningsStep ());
