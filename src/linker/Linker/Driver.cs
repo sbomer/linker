@@ -671,7 +671,7 @@ namespace Mono.Linker
 				p.AddStepAfter (typeof (MarkStep), new ReflectionBlockedStep ());
 
 #if !FEATURE_ILLINK
-			p.AddStepBefore (typeof (BlacklistStep), new LoadI18nAssemblies (assemblies));
+			p.AddStepBefore (typeof (DynamicDependencyLookupStep), new LoadI18nAssemblies (assemblies));
 
 			if (assemblies != I18nAssemblies.None)
 				p.AddStepAfter (typeof (DynamicDependencyLookupStep), new PreserveCalendarsStep (assemblies));
@@ -698,7 +698,6 @@ namespace Mono.Linker
 			}
 #endif
 
-			p.AddStepBefore (typeof (MarkStep), new RemoveUnreachableBlocksStep ());
 			p.AddStepBefore (typeof (OutputStep), new SealerStep ());
 
 			//
@@ -708,18 +707,12 @@ namespace Mono.Linker
 			// ResolveFromXmlStep [optional, possibly many]
 			// [mono only] ResolveFromXApiStep [optional, possibly many]
 			// [mono only] LoadI18nAssemblies
-			// BlacklistStep
-			//   dynamically adds steps:
-			//     ResolveFromXmlStep [optional, possibly many]
-			//     BodySubstituterStep [optional, possibly many]
-			//     LinkAttributesStep [optional, possibly many]
 			// LinkAttributesStep [optional, possibly many]
 			// DynamicDependencyLookupStep
 			// [mono only] PreserveCalendarsStep [optional]
 			// BodySubstituterStep [optional]
 			// RemoveSecurityStep [optional]
 			// [mono only] RemoveFeaturesStep [optional]
-			// RemoveUnreachableBlocksStep [optional]
 			// MarkStep
 			// ReflectionBlockedStep [optional]
 			// ProcessWarningsStep
@@ -816,12 +809,12 @@ namespace Mono.Linker
 
 		protected virtual void AddResolveFromXmlStep (Pipeline pipeline, string file)
 		{
-			pipeline.PrependStep (new ResolveFromXmlStep (new XPathDocument (file), file));
+			pipeline.PrependStep (new ResolveFromXmlStep (new EarlyMarker (context), new XPathDocument (file), file));
 		}
 
 		protected virtual void AddLinkAttributesStep (Pipeline pipeline, string file)
 		{
-			pipeline.AddStepAfter (typeof (BlacklistStep), new LinkAttributesStep (new XPathDocument (file), file));
+			pipeline.AddStepBefore (typeof (DynamicDependencyLookupStep), new LinkAttributesStep (new XPathDocument (file), file));
 		}
 
 		static void AddBodySubstituterStep (Pipeline pipeline, string file)
@@ -1210,7 +1203,6 @@ namespace Mono.Linker
 		static Pipeline GetStandardPipeline ()
 		{
 			Pipeline p = new Pipeline ();
-			p.AppendStep (new BlacklistStep ());
 			p.AppendStep (new DynamicDependencyLookupStep ());
 			p.AppendStep (new MarkStep ());
 			p.AppendStep (new ValidateVirtualMethodAnnotationsStep ());

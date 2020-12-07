@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -7,7 +7,7 @@ using Mono.Cecil;
 
 namespace Mono.Linker.Steps
 {
-	public class BodySubstituterStep : ProcessLinkerXmlStepBase
+	public class BodySubstituterStep : ProcessLinkerXmlBase
 	{
 		public BodySubstituterStep (XPathDocument document, string xmlDocumentLocation)
 			: base (document, xmlDocumentLocation)

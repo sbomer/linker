@@ -340,10 +340,6 @@ namespace Mono.Linker
 			AssemblyNameReference reference = GetReference (scope);
 			try {
 				AssemblyDefinition assembly = _resolver.Resolve (reference, _readerParameters);
-
-				if (assembly != null)
-					RegisterAssembly (assembly);
-
 				return assembly;
 			} catch (Exception e) when (!(e is AssemblyResolutionException)) {
 				throw new AssemblyResolutionException (reference, e);
@@ -423,8 +419,6 @@ namespace Mono.Linker
 
 		public void SetAction (AssemblyDefinition assembly, AssemblyAction defaultAction)
 		{
-			RegisterAssembly (assembly);
-
 			if (!_actions.TryGetValue (assembly.Name.Name, out AssemblyAction action))
 				action = defaultAction;
 
@@ -481,6 +475,26 @@ namespace Mono.Linker
 				return ad;
 
 			return null;
+		}
+
+		public IEnumerable<AssemblyDefinition> ReferencedAssemblies() {
+			var assemblies = GetAssemblies ();
+
+			foreach (var assembly in assemblies)
+				yield return assembly;
+
+			var loaded = new HashSet<AssemblyDefinition> (assemblies);
+			var toProcess = new Queue<AssemblyDefinition> (assemblies);
+
+			while (toProcess.Count > 0) {
+				var assembly = toProcess.Dequeue ();
+				foreach (var reference in ResolveReferences (assembly)) {
+					if (!loaded.Add (reference))
+						continue;
+					yield return reference;
+					toProcess.Enqueue (reference);
+				}
+			}
 		}
 
 		public void SetCustomData (string key, string value)

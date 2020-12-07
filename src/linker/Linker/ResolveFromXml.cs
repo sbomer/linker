@@ -37,7 +37,7 @@ using Mono.Cecil;
 
 namespace Mono.Linker.Steps
 {
-	public class ResolveFromXmlStep : ProcessLinkerXmlStepBase
+	public class ResolveFromXmlStep : ProcessLinkerXmlBase
 	{
 		const string NamespaceElementName = "namespace";
 
@@ -47,15 +47,18 @@ namespace Mono.Linker.Steps
 
 		static readonly string[] _accessorsAll = new string[] { "all" };
 		static readonly char[] _accessorsSep = new char[] { ';' };
+		IMarker Marker { get; }
 
-		public ResolveFromXmlStep (XPathDocument document, string xmlDocumentLocation)
+		public ResolveFromXmlStep (IMarker marker, XPathDocument document, string xmlDocumentLocation)
 			: base (document, xmlDocumentLocation)
 		{
+			Marker = marker;
 		}
 
-		public ResolveFromXmlStep (XPathDocument document, EmbeddedResource resource, AssemblyDefinition resourceAssembly, string xmlDocumentLocation = "<unspecified>")
+		public ResolveFromXmlStep (IMarker marker, XPathDocument document, EmbeddedResource resource, AssemblyDefinition resourceAssembly, string xmlDocumentLocation = "<unspecified>")
 			: base (document, resource, resourceAssembly, xmlDocumentLocation)
 		{
+			Marker = marker;
 		}
 
 #if !FEATURE_ILLINK
@@ -110,8 +113,8 @@ namespace Mono.Linker.Steps
 
 		void MarkAndPreserveAll (TypeDefinition type)
 		{
-			Annotations.Mark (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.SetPreserve (type, TypePreserve.All);
+			Marker.MarkType (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation), null);
 
 			if (!type.HasNestedTypes)
 				return;
@@ -135,6 +138,7 @@ namespace Mono.Linker.Steps
 				return;
 #endif
 
+			// TODO: this can increase the typepreserve of an already-marked type!
 			TypePreserve preserve = GetTypePreserve (nav);
 			if (preserve != TypePreserve.Nothing)
 				Annotations.SetPreserve (type, preserve);
@@ -145,11 +149,12 @@ namespace Mono.Linker.Steps
 			if (!required)
 				return;
 
+			// Dead code, no?
 			if (Annotations.IsMarked (type)) {
 				var duplicateLevel = preserve != TypePreserve.Nothing ? preserve : nav.HasChildren ? TypePreserve.Nothing : TypePreserve.All;
 			}
 
-			Annotations.Mark (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
+			Marker.MarkType (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation), null);
 
 			if (type.IsNested) {
 				var currentType = type;
@@ -187,7 +192,7 @@ namespace Mono.Linker.Steps
 			if (Annotations.IsMarked (field))
 				Context.LogWarning ($"Duplicate preserve of '{field.FullName}'", 2025, _xmlDocumentLocation);
 
-			Context.Annotations.Mark (field, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
+			Marker.MarkField (field, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 		}
 
 #if !FEATURE_ILLINK
@@ -205,12 +210,13 @@ namespace Mono.Linker.Steps
 			if (Annotations.IsMarked (method))
 				Context.LogWarning ($"Duplicate preserve of '{method.GetDisplayName ()}'", 2025, _xmlDocumentLocation);
 
-			Annotations.Mark (method, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.MarkIndirectlyCalledMethod (method);
 			Annotations.SetAction (method, MethodAction.Parse);
 
 			if (!(bool) customData)
 				Annotations.AddPreservedMethod (type, method);
+
+			Marker.MarkMethod (method, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation), null);
 		}
 
 		void ProcessMethodIfNotNull (TypeDefinition type, MethodDefinition method, object customData)
@@ -270,7 +276,7 @@ namespace Mono.Linker.Steps
 			if (Annotations.IsMarked (@event))
 				Context.LogWarning ($"Duplicate preserve of '{@event.FullName}'", 2025, _xmlDocumentLocation);
 
-			Annotations.Mark (@event, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
+			Marker.MarkEvent (@event, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 
 			ProcessMethod (type, @event.AddMethod, null, customData);
 			ProcessMethod (type, @event.RemoveMethod, null, customData);
@@ -294,7 +300,7 @@ namespace Mono.Linker.Steps
 			if (Annotations.IsMarked (property))
 				Context.LogWarning ($"Duplicate preserve of '{property.FullName}'", 2025, _xmlDocumentLocation);
 
-			Annotations.Mark (property, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
+			Marker.MarkProperty (property, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 
 			ProcessPropertyAccessors (type, property, accessors, customData);
 		}
