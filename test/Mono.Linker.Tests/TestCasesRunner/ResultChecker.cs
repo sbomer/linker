@@ -930,7 +930,7 @@ namespace Mono.Linker.Tests.TestCasesRunner
 				Assert.That (
 					linkedValues,
 					Is.EquivalentTo (expected),
-					$"Expected method `{originalMethod} to have its {nameof(ExpectedInstructionSequenceOnMemberInAssemblyAttribute)} modified, however, the sequence does not match the expected value\n{FormattingUtils.FormatSequenceCompareFailureMessage2 (linkedValues, expected, srcValues)}");
+					$"Expected method `{originalMethod} to have its {nameof (ExpectedInstructionSequenceOnMemberInAssemblyAttribute)} modified, however, the sequence does not match the expected value\n{FormattingUtils.FormatSequenceCompareFailureMessage2 (linkedValues, expected, srcValues)}");
 
 				return;
 			}

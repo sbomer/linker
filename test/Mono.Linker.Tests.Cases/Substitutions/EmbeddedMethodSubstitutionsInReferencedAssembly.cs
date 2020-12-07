@@ -15,8 +15,9 @@ namespace Mono.Linker.Tests.Cases.Substitutions
 		"newobj",
 		"throw"
 	})]
-	public class EmbeddedMethodSubstitutionsInReferencedAssembly {
-	
+	public class EmbeddedMethodSubstitutionsInReferencedAssembly
+	{
+
 		public static void Main ()
 		{
 			ReferencedMethod.ConvertToThrowMethod ();

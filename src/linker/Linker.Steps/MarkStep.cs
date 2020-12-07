@@ -1209,7 +1209,7 @@ namespace Mono.Linker.Steps
 			if (CheckProcessedXml (assembly))
 				return;
 
-			new BlacklistInfo(_context, this).Process (assembly);
+			new BlacklistInfo (_context, this).Process (assembly);
 			new RemoveUnreachableBlocksStep (assembly).Process (_context);
 		}
 

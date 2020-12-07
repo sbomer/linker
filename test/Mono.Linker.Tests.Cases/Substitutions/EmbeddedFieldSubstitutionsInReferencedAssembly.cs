@@ -6,7 +6,7 @@ namespace Mono.Linker.Tests.Cases.Substitutions
 {
 	[SetupCompileBefore ("library.dll",
 		new string[] { "Dependencies/ReferencedField.cs" },
-		resources: new object[] { 
+		resources: new object[] {
 			new string[] { "Dependencies/ReferencedField.xml", "ILLink.Substitutions.xml" }
 		})]
 	[IgnoreSubstitutions (false)]
@@ -18,8 +18,9 @@ namespace Mono.Linker.Tests.Cases.Substitutions
 		"stsfld",
 		"ret"
 	})]
-	public class EmbeddedFieldSubstitutionsInReferencedAssembly {
-	
+	public class EmbeddedFieldSubstitutionsInReferencedAssembly
+	{
+
 		public static void Main ()
 		{
 			var _ = ReferencedField.BoolValue;

@@ -1,5 +1,5 @@
-using Mono.Cecil;
 using System.Diagnostics;
+using Mono.Cecil;
 
 namespace Mono.Linker
 {

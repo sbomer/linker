@@ -477,7 +477,8 @@ namespace Mono.Linker
 			return null;
 		}
 
-		public IEnumerable<AssemblyDefinition> ReferencedAssemblies() {
+		public IEnumerable<AssemblyDefinition> ReferencedAssemblies ()
+		{
 			var assemblies = GetAssemblies ();
 
 			foreach (var assembly in assemblies)

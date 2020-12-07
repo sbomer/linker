@@ -41,7 +41,7 @@ namespace Mono.Linker
 		protected readonly Dictionary<MethodDefinition, List<MethodDefinition>> base_methods = new Dictionary<MethodDefinition, List<MethodDefinition>> ();
 		protected readonly Dictionary<MethodDefinition, List<OverrideInformation>> override_methods = new Dictionary<MethodDefinition, List<OverrideInformation>> ();
 
-		public TypeMapInfo(LinkContext context)
+		public TypeMapInfo (LinkContext context)
 		{
 			_context = context;
 		}

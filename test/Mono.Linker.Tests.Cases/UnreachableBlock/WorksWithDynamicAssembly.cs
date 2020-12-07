@@ -1,13 +1,13 @@
+using System.Diagnostics.CodeAnalysis;
 using Mono.Linker.Tests.Cases.Expectations.Assertions;
 using Mono.Linker.Tests.Cases.Expectations.Metadata;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Mono.Linker.Tests.Cases.UnreachableBlock
 {
 	[SetupCSharpCompilerToUse ("csc")]
 	[SetupCompileArgument ("/optimize+")]
 	[SetupLinkerArgument ("--enable-opt", "ipconstprop")]
-	[SetupCompileBefore ( "library.dll", new string[] { "Dependencies/ReferencedAssemblyWithUnreachableBlocks.cs" }, 
+	[SetupCompileBefore ("library.dll", new string[] { "Dependencies/ReferencedAssemblyWithUnreachableBlocks.cs" },
 		addAsReference: false, additionalArguments: "/optimize+", compilerToUse: "csc")]
 	[KeptMemberInAssembly ("library.dll", "Mono.Linker.Tests.Cases.UnreachableBlock.Dependencies.AssemblyWithUnreachableBlocks",
 		new string[] { ".ctor()", "TestProperty()", "get_PropBool()" })]
