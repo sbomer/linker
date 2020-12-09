@@ -7,7 +7,7 @@ using Mono.Cecil;
 
 namespace Mono.Linker.Steps
 {
-	public class BodySubstituterStep : ProcessLinkerXmlBase
+	public class BodySubstituterStep : ProcessLinkerXmlStepBase
 	{
 		public BodySubstituterStep (XPathDocument document, string xmlDocumentLocation)
 			: base (document, xmlDocumentLocation)

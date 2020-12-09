@@ -37,7 +37,7 @@ using Mono.Cecil;
 
 namespace Mono.Linker.Steps
 {
-	public class ResolveFromXmlStep : ProcessLinkerXmlBase
+	public class ResolveFromXmlStep : ProcessLinkerXmlStepBase
 	{
 		const string NamespaceElementName = "namespace";
 
@@ -138,7 +138,6 @@ namespace Mono.Linker.Steps
 				return;
 #endif
 
-			// TODO: this can increase the typepreserve of an already-marked type!
 			TypePreserve preserve = GetTypePreserve (nav);
 			if (preserve != TypePreserve.Nothing)
 				Annotations.SetPreserve (type, preserve);
@@ -148,11 +147,6 @@ namespace Mono.Linker.Steps
 
 			if (!required)
 				return;
-
-			// Dead code, no?
-			if (Annotations.IsMarked (type)) {
-				var duplicateLevel = preserve != TypePreserve.Nothing ? preserve : nav.HasChildren ? TypePreserve.Nothing : TypePreserve.All;
-			}
 
 			Marker.MarkType (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation), null);
 

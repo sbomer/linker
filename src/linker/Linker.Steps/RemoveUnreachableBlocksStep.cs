@@ -14,22 +14,17 @@ namespace Mono.Linker.Steps
 	// then uses this information to remove unreachable conditional blocks. It does
 	// not do any inlining-like code changes.
 	//
-	public class RemoveUnreachableBlocksStep : BaseStep
+	public class RemoveUnreachableBlocksStep : BaseAssemblyStep
 	{
 		Dictionary<MethodDefinition, Instruction> constExprMethods;
 		MethodDefinition IntPtrSize, UIntPtrSize;
-		readonly AssemblyDefinition assembly;
 
-		public RemoveUnreachableBlocksStep (AssemblyDefinition assembly)
+		public RemoveUnreachableBlocksStep (AssemblyDefinition assembly) : base (assembly)
 		{
-			this.assembly = assembly;
 		}
 
-		protected override void ProcessAssembly (AssemblyDefinition assembly)
+		protected override void Process ()
 		{
-			if (this.assembly != assembly)
-				return;
-
 			constExprMethods = new Dictionary<MethodDefinition, Instruction> ();
 			FindConstantExpressionsMethods (assembly.MainModule.Types);
 

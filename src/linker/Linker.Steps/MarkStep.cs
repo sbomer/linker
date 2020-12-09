@@ -619,7 +619,7 @@ namespace Mono.Linker.Steps
 						continue;
 					}
 
-					ProcessEmbeddedXml (resolvedAttributeType.Module.Assembly);
+					ProcessAssemblySteps (resolvedAttributeType.Module.Assembly);
 
 					if (_context.Annotations.HasLinkerAttribute<RemoveAttributeInstancesAttribute> (resolvedAttributeType) && providerInLinkedAssembly)
 						continue;
@@ -1163,15 +1163,6 @@ namespace Mono.Linker.Steps
 			return false;
 		}
 
-		protected bool CheckProcessedXml (AssemblyDefinition assembly)
-		{
-			if (Annotations.IsProcessedXml (assembly))
-				return true;
-
-			Annotations.ProcessedXml (assembly);
-			return false;
-		}
-
 		protected void MarkAssembly (AssemblyDefinition assembly)
 		{
 			if (CheckProcessed (assembly))
@@ -1186,7 +1177,7 @@ namespace Mono.Linker.Steps
 			foreach (ModuleDefinition module in assembly.Modules)
 				LazyMarkCustomAttributes (module);
 
-			ProcessEmbeddedXml (assembly);
+			ProcessAssemblySteps (assembly);
 		}
 
 		void MarkEntireAssembly (AssemblyDefinition assembly)
@@ -1201,15 +1192,15 @@ namespace Mono.Linker.Steps
 			foreach (TypeDefinition type in assembly.MainModule.Types)
 				MarkEntireType (type, includeBaseTypes: false, new DependencyInfo (DependencyKind.TypeInAssembly, assembly), null);
 
-			ProcessEmbeddedXml (assembly);
+			ProcessAssemblySteps (assembly);
 		}
 
-		void ProcessEmbeddedXml (AssemblyDefinition assembly)
+		void ProcessAssemblySteps (AssemblyDefinition assembly)
 		{
-			if (CheckProcessedXml (assembly))
+			if (Annotations.ProcessedAssemblySteps (assembly))
 				return;
 
-			new BlacklistInfo (_context, this).Process (assembly);
+			new EmbeddedXmlStep (assembly, this).Process (_context);
 			new RemoveUnreachableBlocksStep (assembly).Process (_context);
 		}
 
@@ -1244,7 +1235,7 @@ namespace Mono.Linker.Steps
 					continue;
 				}
 
-				ProcessEmbeddedXml (resolved.Module.Assembly);
+				ProcessAssemblySteps (resolved.Module.Assembly);
 				if (_context.Annotations.HasLinkerAttribute<RemoveAttributeInstancesAttribute> (resolved.DeclaringType) && Annotations.GetAction (GetAssemblyFromCustomAttributeProvider (assemblyLevelAttribute.Provider)) == AssemblyAction.Link)
 					continue;
 
@@ -1493,7 +1484,7 @@ namespace Mono.Linker.Steps
 				MarkStaticConstructor (type, new DependencyInfo (DependencyKind.TriggersCctorForCalledMethod, reason.Source), type);
 
 			// Check type being used was not removed by the LinkerRemovableAttribute
-			ProcessEmbeddedXml (type.Module.Assembly);
+			ProcessAssemblySteps (type.Module.Assembly);
 
 			if (_context.Annotations.HasLinkerAttribute<RemoveAttributeInstancesAttribute> (type)) {
 				// Don't warn about references from the removed attribute itself (for example the .ctor on the attribute

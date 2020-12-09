@@ -52,7 +52,7 @@ namespace Mono.Linker
 		protected readonly HashSet<IMetadataTokenProvider> marked = new HashSet<IMetadataTokenProvider> ();
 		protected readonly HashSet<IMetadataTokenProvider> processed = new HashSet<IMetadataTokenProvider> ();
 
-		protected readonly HashSet<AssemblyDefinition> processedXml = new HashSet<AssemblyDefinition> ();
+		protected readonly HashSet<AssemblyDefinition> processedAssemblySteps = new HashSet<AssemblyDefinition> ();
 		protected readonly Dictionary<TypeDefinition, TypePreserve> preserved_types = new Dictionary<TypeDefinition, TypePreserve> ();
 		protected readonly Dictionary<IMemberDefinition, List<MethodDefinition>> preserved_methods = new Dictionary<IMemberDefinition, List<MethodDefinition>> ();
 		protected readonly HashSet<IMetadataTokenProvider> public_api = new HashSet<IMetadataTokenProvider> ();
@@ -253,14 +253,9 @@ namespace Mono.Linker
 			return processed.Contains (provider);
 		}
 
-		public void ProcessedXml (AssemblyDefinition assembly)
+		public bool ProcessedAssemblySteps (AssemblyDefinition assembly)
 		{
-			processedXml.Add (assembly);
-		}
-
-		public bool IsProcessedXml (AssemblyDefinition assembly)
-		{
-			return processedXml.Contains (assembly);
+			return !processedAssemblySteps.Add (assembly);
 		}
 
 		public bool IsPreserved (TypeDefinition type)

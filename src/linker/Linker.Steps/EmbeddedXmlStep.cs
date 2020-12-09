@@ -34,28 +34,21 @@ using System.Reflection;
 using System.Xml;
 using System.Xml.XPath;
 using Mono.Cecil;
-using Mono.Linker.Steps;
 
-namespace Mono.Linker
+namespace Mono.Linker.Steps
 {
-
-	public class BlacklistInfo
+	public class EmbeddedXmlStep : BaseAssemblyStep
 	{
-		LinkContext Context { get; }
-
 		MarkStep MarkStep { get; }
 
-		AnnotationStore Annotations => Context.Annotations;
-
-		public BlacklistInfo (LinkContext context, MarkStep markStep)
+		public EmbeddedXmlStep (AssemblyDefinition assembly, MarkStep markStep) : base (assembly)
 		{
-			Context = context;
 			MarkStep = markStep;
 		}
 
-		public void Process (AssemblyDefinition assembly)
+		protected override void Process ()
 		{
-			List<ProcessLinkerXmlBase> steps = new List<ProcessLinkerXmlBase> ();
+			List<ProcessLinkerXmlStepBase> steps = new List<ProcessLinkerXmlStepBase> ();
 #if !ILLINK
 			foreach (string name in Assembly.GetExecutingAssembly ().GetManifestResourceNames ()) {
 				if (!name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase) || !ShouldProcessRootDescriptorResource (assembly, name))
