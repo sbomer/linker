@@ -28,6 +28,7 @@
 //
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -53,6 +54,7 @@ namespace Mono.Linker.Steps
 		protected List<TypeDefinition> _typesWithInterfaces;
 		protected List<MethodBody> _unreachableBodies;
 		protected Dictionary<TypeDefinition, TypePreserve> _appliedPreserveInfo;
+		protected HashSet<AssemblyDefinition> _markedEntireAssembly;
 
 		readonly List<(TypeDefinition Type, MethodBody Body, Instruction Instr)> _pending_isinst_instr;
 
@@ -182,6 +184,7 @@ namespace Mono.Linker.Steps
 			_unreachableBodies = new List<MethodBody> ();
 			_pending_isinst_instr = new List<(TypeDefinition, MethodBody, Instruction)> ();
 			_appliedPreserveInfo = new Dictionary<TypeDefinition, TypePreserve> ();
+			_markedEntireAssembly = new HashSet<AssemblyDefinition> ();
 		}
 
 		public AnnotationStore Annotations => _context.Annotations;
@@ -198,6 +201,12 @@ namespace Mono.Linker.Steps
 
 		void Initialize ()
 		{
+			// Pre-load corelib so that its XML gets processed first. This is necessary because the
+			// corelib atttribute XML can contain modifications to other assemblies.
+			var coreLib = _context.Resolve (PlatformAssemblies.CoreLib);
+			if (coreLib != null)
+				ProcessAssemblySteps (coreLib);
+
 			foreach (AssemblyDefinition assembly in _context.GetAssemblies ())
 				InitializeAssembly (assembly);
 		}
@@ -206,12 +215,9 @@ namespace Mono.Linker.Steps
 		{
 			var action = _context.Annotations.GetAction (assembly);
 			switch (action) {
+			case AssemblyAction.Link:
 			case AssemblyAction.Copy:
 			case AssemblyAction.Save:
-				Tracer.AddDirectDependency (assembly, new DependencyInfo (DependencyKind.AssemblyAction, action), marked: false);
-				MarkEntireAssembly (assembly);
-				break;
-			case AssemblyAction.Link:
 			case AssemblyAction.AddBypassNGen:
 			case AssemblyAction.AddBypassNGenUsed:
 				foreach (TypeDefinition type in assembly.MainModule.Types)
@@ -371,9 +377,49 @@ namespace Mono.Linker.Steps
 						_context.MarkingHelpers.MarkExportedType (exported, assembly.MainModule, new DependencyInfo (DependencyKind.ExportedType, type));
 					}
 				}
+
+				MarkFullyPreservedAssemblies ();
 			}
 
 			ProcessPendingTypeChecks ();
+		}
+
+		void MarkFullyPreservedAssemblies ()
+		{
+			// Fully mark any assemblies with copy/save action.
+
+			// Unresolved references could get the copy/save action if this is the default action.
+			bool scanReferences =
+				_context.CoreAction == AssemblyAction.Copy || _context.UserAction == AssemblyAction.Copy ||
+				_context.CoreAction == AssemblyAction.Save || _context.UserAction == AssemblyAction.Save;
+
+			if (!scanReferences) {
+				// Unresolved references could get the copy/skip action if it was set explicitly
+				// for some referenced assembly that has not been resolved yet
+				foreach (DictionaryEntry e in _context.Actions) {
+					var assemblyName = (string) e.Key;
+					var action = (AssemblyAction) e.Value;
+					if (action != AssemblyAction.Copy && action != AssemblyAction.Save)
+						continue;
+
+					var assembly = _context.GetLoadedAssembly (assemblyName);
+					if (assembly == null) {
+						scanReferences = true;
+						break;
+					}
+
+					// The action should not change from the explicit command-line action
+					Debug.Assert (_context.Annotations.GetAction (assembly) == action);
+				}
+			}
+
+			var assembliesToCheck = scanReferences ? _context.ReferencedAssemblies ().ToArray () : _context.GetAssemblies ();
+			foreach (var assembly in assembliesToCheck) {
+				var action = _context.Annotations.GetAction (assembly);
+				if (action != AssemblyAction.Copy && action != AssemblyAction.Save)
+					continue;
+				MarkEntireAssembly (assembly);
+			}
 		}
 
 		bool ProcessPrimaryQueue ()
@@ -1168,6 +1214,8 @@ namespace Mono.Linker.Steps
 			if (CheckProcessed (assembly))
 				return;
 
+			ProcessAssemblySteps (assembly);
+
 			ProcessModuleType (assembly);
 
 			LazyMarkCustomAttributes (assembly);
@@ -1176,12 +1224,15 @@ namespace Mono.Linker.Steps
 
 			foreach (ModuleDefinition module in assembly.Modules)
 				LazyMarkCustomAttributes (module);
-
-			ProcessAssemblySteps (assembly);
 		}
 
 		void MarkEntireAssembly (AssemblyDefinition assembly)
 		{
+			if (!_markedEntireAssembly.Add (assembly))
+				return;
+
+			ProcessAssemblySteps (assembly);
+
 			MarkCustomAttributes (assembly, new DependencyInfo (DependencyKind.AssemblyOrModuleAttribute, assembly), null);
 			MarkCustomAttributes (assembly.MainModule, new DependencyInfo (DependencyKind.AssemblyOrModuleAttribute, assembly.MainModule), null);
 
@@ -1191,8 +1242,6 @@ namespace Mono.Linker.Steps
 
 			foreach (TypeDefinition type in assembly.MainModule.Types)
 				MarkEntireType (type, includeBaseTypes: false, new DependencyInfo (DependencyKind.TypeInAssembly, assembly), null);
-
-			ProcessAssemblySteps (assembly);
 		}
 
 		void ProcessAssemblySteps (AssemblyDefinition assembly)
