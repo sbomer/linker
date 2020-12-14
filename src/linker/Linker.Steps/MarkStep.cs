@@ -217,6 +217,7 @@ namespace Mono.Linker.Steps
 			switch (action) {
 			case AssemblyAction.Link:
 			case AssemblyAction.Copy:
+			case AssemblyAction.CopyUsed:
 			case AssemblyAction.Save:
 			case AssemblyAction.AddBypassNGen:
 			case AssemblyAction.AddBypassNGenUsed:

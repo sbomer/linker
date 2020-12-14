@@ -28,6 +28,7 @@
 //
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -48,7 +49,9 @@ namespace Mono.Linker.Steps
 
 		protected override void Process ()
 		{
-			assemblies = Context.ReferencedAssemblies ().ToArray ();
+			// To keep facades, scan all references so that even unused facades are kept
+			assemblies = Context.KeepTypeForwarderOnlyAssemblies ?
+				Context.ReferencedAssemblies ().ToArray () : Annotations.GetAssemblies ().ToArray ();
 
 			foreach (var assembly in assemblies) {
 				RemoveUnusedAssembly (assembly);
@@ -56,6 +59,17 @@ namespace Mono.Linker.Steps
 
 			foreach (var assembly in assemblies) {
 				ProcessAssemblyAction (assembly);
+			}
+
+			if (Context.KeepTypeForwarderOnlyAssemblies)
+				return;
+
+			// Ensure that we remove any assemblies which were resolved while sweeping references
+			foreach (var assembly in Annotations.GetAssemblies ()) {
+				if (!assemblies.Any (processedAssembly => processedAssembly == assembly)) {
+					Debug.Assert (!IsUsedAssembly (assembly));
+					Annotations.SetAction (assembly, AssemblyAction.Delete);
+				}
 			}
 		}
 
