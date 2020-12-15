@@ -61,9 +61,11 @@ namespace Mono.Linker
 		}
 
 		static readonly string[] corlibNames = new[] {
+#if FEATURE_ILLINK
+			"System.Private.CoreLib",
+#endif
 			"mscorlib",
 			"System.Runtime",
-			"System.Private.CoreLib",
 			"netstandard"
 		};
 
