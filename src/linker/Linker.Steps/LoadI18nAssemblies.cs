@@ -48,7 +48,7 @@ namespace Mono.Linker.Steps
 		protected override bool ConditionToProcess ()
 		{
 			return _assemblies != I18nAssemblies.None &&
-				Context.GetAssemblies ().FirstOrDefault (a => a.Name.Name == "mscorlib")?.MainModule.GetType ("System.MonoType") != null;
+				Context.TryResolve ("mscorlib")?.MainModule.GetType ("System.MonoType") != null;
 		}
 
 		protected override void Process ()

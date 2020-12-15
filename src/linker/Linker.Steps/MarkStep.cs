@@ -1250,6 +1250,9 @@ namespace Mono.Linker.Steps
 			if (Annotations.ProcessedAssemblySteps (assembly))
 				return;
 
+			// Security attributes do not respect the attributes XML
+			if (_context.StripSecurity)
+				new RemoveSecurityStep (assembly).Process (_context);
 			new EmbeddedXmlStep (assembly, this).Process (_context);
 			new RemoveUnreachableBlocksStep (assembly).Process (_context);
 		}
