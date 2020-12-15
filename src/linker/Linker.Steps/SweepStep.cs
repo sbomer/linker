@@ -53,8 +53,19 @@ namespace Mono.Linker.Steps
 			assemblies = Context.KeepTypeForwarderOnlyAssemblies ?
 				Context.ReferencedAssemblies ().ToArray () : Annotations.GetAssemblies ().ToArray ();
 
+			// Ensure that any assemblies which need to be removed are marked for deletion,
+			// including assemblies which are not referenced by any others.
 			foreach (var assembly in assemblies) {
-				RemoveUnusedAssembly (assembly);
+				if (ShouldRemoveAssembly (assembly))
+					Annotations.SetAction (assembly, AssemblyAction.Delete);
+			}
+
+			// Look for references (included to previously unresolved assemblies) marked for deletion
+			foreach (var assembly in assemblies) {
+				if (ShouldRemoveAssembly (assembly) || Annotations.GetAction (assembly) == AssemblyAction.Skip)
+					continue;
+
+				SweepReferences (assembly);
 			}
 
 			foreach (var assembly in assemblies) {
@@ -65,7 +76,7 @@ namespace Mono.Linker.Steps
 				return;
 
 			// Ensure that we remove any assemblies which were resolved while sweeping references
-			foreach (var assembly in Annotations.GetAssemblies ()) {
+			foreach (var assembly in Annotations.GetAssemblies ().ToArray ()) {
 				if (!assemblies.Any (processedAssembly => processedAssembly == assembly)) {
 					Debug.Assert (!IsUsedAssembly (assembly));
 					Annotations.SetAction (assembly, AssemblyAction.Delete);
@@ -73,17 +84,19 @@ namespace Mono.Linker.Steps
 			}
 		}
 
-		void RemoveUnusedAssembly (AssemblyDefinition assembly)
+		bool ShouldRemoveAssembly (AssemblyDefinition assembly)
 		{
 			switch (Annotations.GetAction (assembly)) {
 			case AssemblyAction.AddBypassNGenUsed:
 			case AssemblyAction.CopyUsed:
 			case AssemblyAction.Link:
 				if (!IsUsedAssembly (assembly))
-					RemoveAssembly (assembly);
-
+					return true;
 				break;
+			case AssemblyAction.Delete:
+				return true;
 			}
+			return false;
 		}
 
 		protected void ProcessAssemblyAction (AssemblyDefinition assembly)
@@ -192,21 +205,6 @@ namespace Mono.Linker.Steps
 			return Annotations.IsMarked (assembly.MainModule);
 		}
 
-		protected virtual void RemoveAssembly (AssemblyDefinition assembly)
-		{
-			Annotations.SetAction (assembly, AssemblyAction.Delete);
-
-			foreach (var a in assemblies) {
-				switch (Annotations.GetAction (a)) {
-				case AssemblyAction.Skip:
-				case AssemblyAction.Delete:
-					continue;
-				}
-
-				SweepReferences (a, assembly);
-			}
-		}
-
 		void SweepResources (AssemblyDefinition assembly)
 		{
 			var resourcesToRemove = Annotations.GetResourcesToRemove (assembly);
@@ -218,11 +216,8 @@ namespace Mono.Linker.Steps
 				resources.Remove (resource);
 		}
 
-		void SweepReferences (AssemblyDefinition assembly, AssemblyDefinition referenceToRemove)
+		void SweepReferences (AssemblyDefinition assembly)
 		{
-			if (assembly == referenceToRemove)
-				return;
-
 			bool reference_removed = false;
 
 			var references = assembly.MainModule.AssemblyReferences;
@@ -230,7 +225,7 @@ namespace Mono.Linker.Steps
 				var reference = references[i];
 
 				AssemblyDefinition ad = Context.Resolver.Resolve (reference);
-				if (ad == null || !AreSameReference (ad.Name, referenceToRemove.Name))
+				if (ad == null || !ShouldRemoveAssembly (ad))
 					continue;
 
 				ReferenceRemoved (assembly, reference);
@@ -722,20 +717,6 @@ namespace Mono.Linker.Steps
 		protected virtual bool ShouldRemove<T> (T element) where T : IMetadataTokenProvider
 		{
 			return !Annotations.IsMarked (element);
-		}
-
-		static bool AreSameReference (AssemblyNameReference a, AssemblyNameReference b)
-		{
-			if (a == b)
-				return true;
-
-			if (a.Name != b.Name)
-				return false;
-
-			if (a.Version > b.Version)
-				return false;
-
-			return true;
 		}
 
 		protected virtual void ElementRemoved (IMetadataTokenProvider element)
