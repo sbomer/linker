@@ -359,6 +359,7 @@ namespace Mono.Linker.Steps
 					if (!assembly.MainModule.HasExportedTypes)
 						continue;
 
+					bool markedExport = false;
 					foreach (var exported in assembly.MainModule.ExportedTypes) {
 						bool isForwarder = exported.IsForwarder;
 						var declaringType = exported.DeclaringType;
@@ -375,7 +376,12 @@ namespace Mono.Linker.Steps
 						if (!Annotations.IsMarked (type))
 							continue;
 						_context.MarkingHelpers.MarkExportedType (exported, assembly.MainModule, new DependencyInfo (DependencyKind.ExportedType, type));
+
+						markedExport = true;
 					}
+
+					if (markedExport)
+						ProcessAssemblySteps (assembly);
 				}
 
 				MarkFullyPreservedAssemblies ();
