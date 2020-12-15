@@ -45,7 +45,6 @@ namespace Mono.Linker.Steps
 
 	public partial class MarkStep : IStep, IMarker
 	{
-
 		protected LinkContext _context;
 		protected Queue<(MethodDefinition, DependencyInfo)> _methods;
 		protected List<MethodDefinition> _virtual_methods;
@@ -385,22 +384,22 @@ namespace Mono.Linker.Steps
 			ProcessPendingTypeChecks ();
 		}
 
+		static bool IsFullyPreservedAction (AssemblyAction action) => action == AssemblyAction.Copy || action == AssemblyAction.Save;
+
 		void MarkFullyPreservedAssemblies ()
 		{
 			// Fully mark any assemblies with copy/save action.
 
 			// Unresolved references could get the copy/save action if this is the default action.
-			bool scanReferences =
-				_context.CoreAction == AssemblyAction.Copy || _context.UserAction == AssemblyAction.Copy ||
-				_context.CoreAction == AssemblyAction.Save || _context.UserAction == AssemblyAction.Save;
+			bool scanReferences = IsFullyPreservedAction (_context.CoreAction) || IsFullyPreservedAction (_context.UserAction);
 
 			if (!scanReferences) {
-				// Unresolved references could get the copy/skip action if it was set explicitly
+				// Unresolved references could get the copy/save action if it was set explicitly
 				// for some referenced assembly that has not been resolved yet
 				foreach (DictionaryEntry e in _context.Actions) {
 					var assemblyName = (string) e.Key;
 					var action = (AssemblyAction) e.Value;
-					if (action != AssemblyAction.Copy && action != AssemblyAction.Save)
+					if (!IsFullyPreservedAction (action))
 						continue;
 
 					var assembly = _context.GetLoadedAssembly (assemblyName);
@@ -417,7 +416,7 @@ namespace Mono.Linker.Steps
 			var assembliesToCheck = scanReferences ? _context.ReferencedAssemblies ().ToArray () : _context.GetAssemblies ();
 			foreach (var assembly in assembliesToCheck) {
 				var action = _context.Annotations.GetAction (assembly);
-				if (action != AssemblyAction.Copy && action != AssemblyAction.Save)
+				if (!IsFullyPreservedAction (action))
 					continue;
 				MarkEntireAssembly (assembly);
 			}

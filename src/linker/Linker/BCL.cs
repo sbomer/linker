@@ -72,7 +72,7 @@ namespace Mono.Linker
 		public static TypeDefinition FindPredefinedType (string ns, string name, LinkContext context)
 		{
 			foreach (var corlibName in corlibNames) {
-				AssemblyDefinition corlib = context.Resolve (corlibName);
+				AssemblyDefinition corlib = context.TryResolve (corlibName);
 				if (corlib == null)
 					continue;
 

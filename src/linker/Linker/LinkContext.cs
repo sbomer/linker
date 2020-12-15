@@ -299,7 +299,7 @@ namespace Mono.Linker
 			int pos = fullName.IndexOf (",");
 			fullName = TypeReferenceExtensions.ToCecilName (fullName);
 			if (pos == -1) {
-				foreach (AssemblyDefinition asm in GetAssemblies ()) {
+				foreach (AssemblyDefinition asm in ReferencedAssemblies ()) {
 					var type = asm.MainModule.GetType (fullName);
 					if (type != null)
 						return type;
