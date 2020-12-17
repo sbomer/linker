@@ -11,13 +11,13 @@ namespace Mono.Linker.Steps
 
 		protected override void Process ()
 		{
-			if (Annotations.GetAction (assembly) == AssemblyAction.Link) {
-				ClearSecurityDeclarations (assembly);
-				RemoveCustomAttributesThatAreForSecurity (assembly);
+			if (Annotations.GetAction (_assembly) == AssemblyAction.Link) {
+				ClearSecurityDeclarations (_assembly);
+				RemoveCustomAttributesThatAreForSecurity (_assembly);
 
-				RemoveCustomAttributesThatAreForSecurity (assembly.MainModule);
+				RemoveCustomAttributesThatAreForSecurity (_assembly.MainModule);
 
-				foreach (var type in assembly.MainModule.Types)
+				foreach (var type in _assembly.MainModule.Types)
 					ProcessType (type);
 			}
 		}

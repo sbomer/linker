@@ -26,7 +26,7 @@ namespace Mono.Linker.Steps
 		protected override void Process ()
 		{
 			constExprMethods = new Dictionary<MethodDefinition, Instruction> ();
-			FindConstantExpressionsMethods (assembly.MainModule.Types);
+			FindConstantExpressionsMethods (_assembly.MainModule.Types);
 
 			if (constExprMethods.Count == 0)
 				return;
@@ -38,10 +38,10 @@ namespace Mono.Linker.Steps
 				//
 				constExprMethodsCount = constExprMethods.Count;
 
-				if (Annotations.GetAction (assembly) != AssemblyAction.Link)
+				if (Annotations.GetAction (_assembly) != AssemblyAction.Link)
 					continue;
 
-				RewriteBodies (assembly.MainModule.Types);
+				RewriteBodies (_assembly.MainModule.Types);
 			} while (constExprMethodsCount < constExprMethods.Count);
 		}
 

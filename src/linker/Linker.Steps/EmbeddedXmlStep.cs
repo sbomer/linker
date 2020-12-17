@@ -51,7 +51,7 @@ namespace Mono.Linker.Steps
 			List<ProcessLinkerXmlStepBase> steps = new List<ProcessLinkerXmlStepBase> ();
 #if !ILLINK
 			foreach (string name in Assembly.GetExecutingAssembly ().GetManifestResourceNames ()) {
-				if (!name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase) || !ShouldProcessRootDescriptorResource (assembly, name))
+				if (!name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase) || !ShouldProcessRootDescriptorResource (_assembly, name))
 					continue;
 
 				try {
@@ -64,20 +64,20 @@ namespace Mono.Linker.Steps
 			}
 #endif
 
-			if (Annotations.GetAction (assembly) != AssemblyAction.Skip) {
+			if (Annotations.GetAction (_assembly) != AssemblyAction.Skip) {
 
-				var embeddedXml = assembly.Modules
+				var embeddedXml = _assembly.Modules
 					.SelectMany (mod => mod.Resources)
 					.Where (res => res.ResourceType == ResourceType.Embedded)
 					.Where (res => res.Name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase))
 					.ToArray ();
 
 				foreach (var rsc in embeddedXml
-									.Where (res => ShouldProcessRootDescriptorResource (assembly, res.Name))
+									.Where (res => ShouldProcessRootDescriptorResource (_assembly, res.Name))
 									.Cast<EmbeddedResource> ()) {
 					try {
-						Context.LogMessage ($"Processing embedded linker descriptor {rsc.Name} from {assembly.Name}");
-						steps.Add (GetExternalResolveStep (rsc, assembly));
+						Context.LogMessage ($"Processing embedded linker descriptor {rsc.Name} from {_assembly.Name}");
+						steps.Add (GetExternalResolveStep (rsc, _assembly));
 					} catch (XmlException ex) {
 						/* This could happen if some broken XML file is embedded. */
 						Context.LogError ($"Error processing {rsc.Name}: {ex}", 1003);
@@ -88,8 +88,8 @@ namespace Mono.Linker.Steps
 									.Where (res => res.Name.Equals ("ILLink.Substitutions.xml", StringComparison.OrdinalIgnoreCase))
 									.Cast<EmbeddedResource> ()) {
 					try {
-						Context.LogMessage ($"Processing embedded substitution descriptor {rsc.Name} from {assembly.Name}");
-						steps.Add (GetExternalSubstitutionStep (rsc, assembly));
+						Context.LogMessage ($"Processing embedded substitution descriptor {rsc.Name} from {_assembly.Name}");
+						steps.Add (GetExternalSubstitutionStep (rsc, _assembly));
 					} catch (XmlException ex) {
 						Context.LogError ($"Error processing {rsc.Name}: {ex}", 1003);
 					}
@@ -99,10 +99,10 @@ namespace Mono.Linker.Steps
 									.Where (res => res.Name.Equals ("ILLink.LinkAttributes.xml", StringComparison.OrdinalIgnoreCase))
 									.Cast<EmbeddedResource> ()) {
 					try {
-						Context.LogMessage ($"Processing embedded {rsc.Name} from {assembly.Name}");
-						steps.Add (GetExternalLinkAttributesStep (rsc, assembly));
+						Context.LogMessage ($"Processing embedded {rsc.Name} from {_assembly.Name}");
+						steps.Add (GetExternalLinkAttributesStep (rsc, _assembly));
 					} catch (XmlException ex) {
-						Context.LogError ($"Error processing {rsc.Name} from {assembly.Name}: {ex}", 1003);
+						Context.LogError ($"Error processing {rsc.Name} from {_assembly.Name}: {ex}", 1003);
 					}
 				}
 			}

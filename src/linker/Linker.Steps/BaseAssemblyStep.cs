@@ -9,26 +9,20 @@ namespace Mono.Linker.Steps
 
 	public abstract class BaseAssemblyStep : IStep
 	{
-		private LinkContext context;
+		protected readonly AssemblyDefinition _assembly;
 
-		protected readonly AssemblyDefinition assembly;
+		protected LinkContext Context { get; private set; }
+
+		public AnnotationStore Annotations => Context?.Annotations;
 
 		public BaseAssemblyStep (AssemblyDefinition assembly)
 		{
-			this.assembly = assembly;
-		}
-
-		public LinkContext Context {
-			get { return context; }
-		}
-
-		public AnnotationStore Annotations {
-			get { return context.Annotations; }
+			_assembly = assembly;
 		}
 
 		public void Process (LinkContext context)
 		{
-			this.context = context;
+			Context = context;
 
 			Process ();
 		}
