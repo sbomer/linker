@@ -235,7 +235,7 @@ namespace Mono.Linker
 			_actions = new Dictionary<string, AssemblyAction> ();
 			_parameters = new Dictionary<string, string> (StringComparer.Ordinal);
 			_readerParameters = readerParameters;
-			_customAttributes = new CustomAttributeSource ();
+			_customAttributes = new CustomAttributeSource (this);
 			_cachedWarningMessageContainers = new List<MessageContainer> ();
 
 			SymbolReaderProvider = new DefaultSymbolReaderProvider (false);

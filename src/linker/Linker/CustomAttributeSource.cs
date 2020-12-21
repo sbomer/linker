@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mono.Cecil;
+using Mono.Linker.Steps;
 
 namespace Mono.Linker
 {
@@ -14,10 +15,39 @@ namespace Mono.Linker
 		private readonly Dictionary<ICustomAttributeProvider, IEnumerable<CustomAttribute>> _xmlCustomAttributes;
 		private readonly Dictionary<ICustomAttributeProvider, IEnumerable<Attribute>> _internalAttributes;
 
-		public CustomAttributeSource ()
+		readonly HashSet<AssemblyDefinition> _processedAttributeXml;
+		readonly LinkContext _context;
+
+		public CustomAttributeSource (LinkContext context)
 		{
 			_xmlCustomAttributes = new Dictionary<ICustomAttributeProvider, IEnumerable<CustomAttribute>> ();
 			_internalAttributes = new Dictionary<ICustomAttributeProvider, IEnumerable<Attribute>> ();
+			_processedAttributeXml = new HashSet<AssemblyDefinition> ();
+			_context = context;
+		}
+
+		static AssemblyDefinition GetAssembly (ICustomAttributeProvider provider)
+		{
+			return provider switch {
+				AssemblyDefinition assembly => assembly,
+				ModuleDefinition module => module.Assembly,
+				TypeDefinition type => type.Module.Assembly,
+				IMemberDefinition member => member.DeclaringType.Module.Assembly,
+				ParameterDefinition parameter => (parameter.Method as MethodDefinition).Module.Assembly,
+				MethodReturnType methodReturnType => (methodReturnType.Method as MethodDefinition).Module.Assembly,
+				GenericParameter genericParameter => genericParameter.Owner.Module.Assembly,
+				_ => throw new NotImplementedException ()
+			};
+		}
+
+		public void EnsureProcessedAttributeXml (ICustomAttributeProvider provider)
+		{
+			var assembly = GetAssembly (provider);
+
+			if (!_processedAttributeXml.Add (assembly))
+				return;
+
+			new EmbeddedXmlStep (assembly).ProcessAttributes (_context);
 		}
 
 		public void AddCustomAttributes (ICustomAttributeProvider provider, IEnumerable<CustomAttribute> customAttributes)
@@ -35,6 +65,8 @@ namespace Mono.Linker
 					yield return customAttribute;
 			}
 
+			EnsureProcessedAttributeXml (provider);
+
 			if (_xmlCustomAttributes.TryGetValue (provider, out var annotations)) {
 				foreach (var customAttribute in annotations)
 					yield return customAttribute;
@@ -45,6 +77,8 @@ namespace Mono.Linker
 		{
 			if (provider.HasCustomAttributes)
 				return true;
+
+			EnsureProcessedAttributeXml (provider);
 
 			if (_xmlCustomAttributes.ContainsKey (provider))
 				return true;
@@ -62,6 +96,8 @@ namespace Mono.Linker
 
 		public IEnumerable<Attribute> GetInternalAttributes (ICustomAttributeProvider provider)
 		{
+			EnsureProcessedAttributeXml (provider);
+
 			if (_internalAttributes.TryGetValue (provider, out var annotations)) {
 				foreach (var attribute in annotations)
 					yield return attribute;
@@ -70,6 +106,8 @@ namespace Mono.Linker
 
 		public bool HasInternalAttributes (ICustomAttributeProvider provider)
 		{
+			EnsureProcessedAttributeXml (provider);
+
 			return _internalAttributes.ContainsKey (provider) ? true : false;
 		}
 

@@ -53,6 +53,10 @@ namespace Mono.Linker
 		protected readonly HashSet<IMetadataTokenProvider> processed = new HashSet<IMetadataTokenProvider> ();
 
 		protected readonly HashSet<AssemblyDefinition> processedAssemblySteps = new HashSet<AssemblyDefinition> ();
+		protected readonly HashSet<AssemblyDefinition> processedDescriptorXml = new HashSet<AssemblyDefinition> ();
+		protected readonly HashSet<AssemblyDefinition> processedSubstitutionXml = new HashSet<AssemblyDefinition> ();
+		protected readonly HashSet<AssemblyDefinition> processedUnreachableBlocks = new HashSet<AssemblyDefinition> ();
+		
 		protected readonly Dictionary<TypeDefinition, TypePreserve> preserved_types = new Dictionary<TypeDefinition, TypePreserve> ();
 		protected readonly Dictionary<IMemberDefinition, List<MethodDefinition>> preserved_methods = new Dictionary<IMemberDefinition, List<MethodDefinition>> ();
 		protected readonly HashSet<IMetadataTokenProvider> public_api = new HashSet<IMetadataTokenProvider> ();
@@ -256,6 +260,21 @@ namespace Mono.Linker
 		public bool ProcessedAssemblySteps (AssemblyDefinition assembly)
 		{
 			return !processedAssemblySteps.Add (assembly);
+		}
+
+		public bool ProcessedDescriptorXml (AssemblyDefinition assembly)
+		{
+			return !processedDescriptorXml.Add (assembly);
+		}
+
+		public bool ProcessedSubstitutionXml (AssemblyDefinition assembly)
+		{
+			return !processedSubstitutionXml.Add (assembly);
+		}
+
+		public bool ProcessedUnreachableBlocks (AssemblyDefinition assembly)
+		{
+			return !processedUnreachableBlocks.Add (assembly);
 		}
 
 		public bool IsPreserved (TypeDefinition type)

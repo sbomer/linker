@@ -204,7 +204,7 @@ namespace Mono.Linker.Steps
 			// corelib atttribute XML can contain modifications to other assemblies.
 			var coreLib = _context.Resolve (PlatformAssemblies.CoreLib);
 			if (coreLib != null)
-				ProcessAssemblySteps (coreLib);
+				_context.CustomAttributes.EnsureProcessedAttributeXml (coreLib);
 
 			foreach (AssemblyDefinition assembly in _context.GetAssemblies ())
 				InitializeAssembly (assembly);
@@ -381,7 +381,7 @@ namespace Mono.Linker.Steps
 					}
 
 					if (markedExport)
-						ProcessAssemblySteps (assembly);
+						ProcessDescriptorXml (assembly);
 				}
 
 				MarkFullyPreservedAssemblies ();
@@ -670,8 +670,6 @@ namespace Mono.Linker.Steps
 						HandleUnresolvedType (ca.AttributeType);
 						continue;
 					}
-
-					ProcessAssemblySteps (resolvedAttributeType.Module.Assembly);
 
 					if (_context.Annotations.HasLinkerAttribute<RemoveAttributeInstancesAttribute> (resolvedAttributeType) && providerInLinkedAssembly)
 						continue;
@@ -1250,6 +1248,14 @@ namespace Mono.Linker.Steps
 				MarkEntireType (type, includeBaseTypes: false, new DependencyInfo (DependencyKind.TypeInAssembly, assembly), null);
 		}
 
+		void ProcessDescriptorXml (AssemblyDefinition assembly)
+		{
+			if (Annotations.ProcessedDescriptorXml (assembly))
+				return;
+			
+			new EmbeddedXmlStep (assembly).ProcessDescriptors (_context, this);
+		}
+
 		void ProcessAssemblySteps (AssemblyDefinition assembly)
 		{
 			if (Annotations.ProcessedAssemblySteps (assembly))
@@ -1258,8 +1264,8 @@ namespace Mono.Linker.Steps
 			// Security attributes do not respect the attributes XML
 			if (_context.StripSecurity)
 				new RemoveSecurityStep (assembly).Process (_context);
-			new EmbeddedXmlStep (assembly, this).Process (_context);
-			new RemoveUnreachableBlocksStep (assembly).Process (_context);
+
+			ProcessDescriptorXml (assembly);
 		}
 
 		void ProcessModuleType (AssemblyDefinition assembly)
@@ -1293,7 +1299,6 @@ namespace Mono.Linker.Steps
 					continue;
 				}
 
-				ProcessAssemblySteps (resolved.Module.Assembly);
 				if (_context.Annotations.HasLinkerAttribute<RemoveAttributeInstancesAttribute> (resolved.DeclaringType) && Annotations.GetAction (GetAssemblyFromCustomAttributeProvider (assemblyLevelAttribute.Provider)) == AssemblyAction.Link)
 					continue;
 
@@ -1540,9 +1545,6 @@ namespace Mono.Linker.Steps
 			// Treat cctors triggered by a called method specially and mark this case up-front.
 			if (type.HasMethods && ShouldMarkTypeStaticConstructor (type) && reason.Kind == DependencyKind.DeclaringTypeOfCalledMethod)
 				MarkStaticConstructor (type, new DependencyInfo (DependencyKind.TriggersCctorForCalledMethod, reason.Source), type);
-
-			// Check type being used was not removed by the LinkerRemovableAttribute
-			ProcessAssemblySteps (type.Module.Assembly);
 
 			if (_context.Annotations.HasLinkerAttribute<RemoveAttributeInstancesAttribute> (type)) {
 				// Don't warn about references from the removed attribute itself (for example the .ctor on the attribute
@@ -2447,9 +2449,18 @@ namespace Mono.Linker.Steps
 			MarkMethod (method, reason, sourceLocationMember);
 		}
 
+		MethodAction GetMethodAction (MethodDefinition method)
+		{
+			var assembly = method.DeclaringType.Module.Assembly;
+			if (!Annotations.ProcessedSubstitutionXml (assembly))
+				new EmbeddedXmlStep (assembly).ProcessSubstitutions (_context);
+
+			return Annotations.GetAction (method);
+		}
+
 		public void MarkMethod (MethodDefinition method, in DependencyInfo reason, IMemberDefinition sourceLocationMember)
 		{
-			if (Annotations.GetAction (method) == MethodAction.Nothing)
+			if (GetMethodAction (method) == MethodAction.Nothing)
 				Annotations.SetAction (method, MethodAction.Parse);
 
 			EnqueueMethod (method, reason);
@@ -2649,7 +2660,7 @@ namespace Mono.Linker.Steps
 
 		void MarkNewCodeDependencies (MethodDefinition method)
 		{
-			switch (Annotations.GetAction (method)) {
+			switch (GetMethodAction (method)) {
 			case MethodAction.ConvertToStub:
 				if (!method.IsInstanceConstructor ())
 					return;
@@ -2863,7 +2874,7 @@ namespace Mono.Linker.Steps
 			if (!method.HasBody)
 				return false;
 
-			switch (Annotations.GetAction (method)) {
+			switch (GetMethodAction (method)) {
 			case MethodAction.ForceParse:
 				return true;
 			case MethodAction.Parse:
@@ -2916,6 +2927,12 @@ namespace Mono.Linker.Steps
 				MarkAndCacheConvertToThrowExceptionCtor (new DependencyInfo (DependencyKind.UnreachableBodyRequirement, body.Method), body.Method);
 				_unreachableBodies.Add (body);
 				return;
+			}
+
+			var assembly = body.Method.DeclaringType.Module.Assembly;
+			if (!Annotations.ProcessedUnreachableBlocks (assembly)) {
+				Debug.Assert (Annotations.ProcessedSubstitutionXml (assembly));
+				new RemoveUnreachableBlocksStep (assembly).Process (_context);			
 			}
 
 			foreach (VariableDefinition var in body.Variables)

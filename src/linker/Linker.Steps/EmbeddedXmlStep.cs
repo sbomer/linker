@@ -39,16 +39,25 @@ namespace Mono.Linker.Steps
 {
 	public class EmbeddedXmlStep : BaseAssemblyStep
 	{
-		MarkStep MarkStep { get; }
-
-		public EmbeddedXmlStep (AssemblyDefinition assembly, MarkStep markStep) : base (assembly)
+		public EmbeddedXmlStep (AssemblyDefinition assembly) : base (assembly)
 		{
-			MarkStep = markStep;
 		}
 
-		protected override void Process ()
+		static IEnumerable<Resource> GetEmbeddedXml (AssemblyDefinition assembly)
 		{
-			List<ProcessLinkerXmlStepBase> steps = new List<ProcessLinkerXmlStepBase> ();
+			return assembly.Modules
+				.SelectMany (mod => mod.Resources)
+				.Where (res => res.ResourceType == ResourceType.Embedded)
+				.Where (res => res.Name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase));
+		}
+
+		public void ProcessDescriptors (LinkContext context, MarkStep markStep)
+		{
+			Process (context);
+
+			var steps = new List<ResolveFromXmlStep> ();
+			var embeddedXml = GetEmbeddedXml (_assembly);
+
 #if !ILLINK
 			foreach (string name in Assembly.GetExecutingAssembly ().GetManifestResourceNames ()) {
 				if (!name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase) || !ShouldProcessRootDescriptorResource (_assembly, name))
@@ -56,54 +65,76 @@ namespace Mono.Linker.Steps
 
 				try {
 					Context.LogMessage ($"Processing resource linker descriptor: {name}");
-					steps.Add (GetResolveStep (name));
+					steps.Add (GetResolveStep (name, markStep));
 				} catch (XmlException ex) {
 					/* This could happen if some broken XML file is included. */
 					Context.LogError ($"Error processing {name}: {ex}", 1003);
 				}
 			}
 #endif
-
 			if (Annotations.GetAction (_assembly) != AssemblyAction.Skip) {
-
-				var embeddedXml = _assembly.Modules
-					.SelectMany (mod => mod.Resources)
-					.Where (res => res.ResourceType == ResourceType.Embedded)
-					.Where (res => res.Name.EndsWith (".xml", StringComparison.OrdinalIgnoreCase))
-					.ToArray ();
-
 				foreach (var rsc in embeddedXml
-									.Where (res => ShouldProcessRootDescriptorResource (_assembly, res.Name))
-									.Cast<EmbeddedResource> ()) {
+							.Where (res => ShouldProcessRootDescriptorResource (_assembly, res.Name))
+							.Cast<EmbeddedResource> ()) {
 					try {
 						Context.LogMessage ($"Processing embedded linker descriptor {rsc.Name} from {_assembly.Name}");
-						steps.Add (GetExternalResolveStep (rsc, _assembly));
+						steps.Add (GetExternalResolveStep (rsc, _assembly, markStep));
 					} catch (XmlException ex) {
 						/* This could happen if some broken XML file is embedded. */
 						Context.LogError ($"Error processing {rsc.Name}: {ex}", 1003);
 					}
 				}
+			}
 
-				foreach (var rsc in embeddedXml
-									.Where (res => res.Name.Equals ("ILLink.Substitutions.xml", StringComparison.OrdinalIgnoreCase))
-									.Cast<EmbeddedResource> ()) {
-					try {
-						Context.LogMessage ($"Processing embedded substitution descriptor {rsc.Name} from {_assembly.Name}");
-						steps.Add (GetExternalSubstitutionStep (rsc, _assembly));
-					} catch (XmlException ex) {
-						Context.LogError ($"Error processing {rsc.Name}: {ex}", 1003);
-					}
+			foreach (var step in steps) {
+				step.Process (Context);
+			}
+		}
+
+		public void ProcessSubstitutions (LinkContext context)
+		{
+			Process (context);
+
+			if (Annotations.GetAction (_assembly) == AssemblyAction.Skip)
+				return;
+
+			var steps = new List<BodySubstituterStep> ();
+			var embeddedXml = GetEmbeddedXml (_assembly);
+
+			foreach (var rsc in embeddedXml
+								.Where (res => res.Name.Equals ("ILLink.Substitutions.xml", StringComparison.OrdinalIgnoreCase))
+								.Cast<EmbeddedResource> ()) {
+				try {
+					Context.LogMessage ($"Processing embedded substitution descriptor {rsc.Name} from {_assembly.Name}");
+					steps.Add (GetExternalSubstitutionStep (rsc, _assembly));
+				} catch (XmlException ex) {
+					Context.LogError ($"Error processing {rsc.Name}: {ex}", 1003);
 				}
+			}
 
-				foreach (var rsc in embeddedXml
-									.Where (res => res.Name.Equals ("ILLink.LinkAttributes.xml", StringComparison.OrdinalIgnoreCase))
-									.Cast<EmbeddedResource> ()) {
-					try {
-						Context.LogMessage ($"Processing embedded {rsc.Name} from {_assembly.Name}");
-						steps.Add (GetExternalLinkAttributesStep (rsc, _assembly));
-					} catch (XmlException ex) {
-						Context.LogError ($"Error processing {rsc.Name} from {_assembly.Name}: {ex}", 1003);
-					}
+			foreach (var step in steps) {
+				step.Process (Context);
+			}
+		}
+
+		public void ProcessAttributes (LinkContext context)
+		{
+			Process (context);
+
+			if (Annotations.GetAction (_assembly) == AssemblyAction.Skip)
+				return;
+
+			var steps = new List<LinkAttributesStep> ();
+			var embeddedXml = GetEmbeddedXml (_assembly);
+
+			foreach (var rsc in embeddedXml
+								.Where (res => res.Name.Equals ("ILLink.LinkAttributes.xml", StringComparison.OrdinalIgnoreCase))
+								.Cast<EmbeddedResource> ()) {
+				try {
+					Context.LogMessage ($"Processing embedded {rsc.Name} from {_assembly.Name}");
+					steps.Add (GetExternalLinkAttributesStep (rsc, _assembly));
+				} catch (XmlException ex) {
+					Context.LogError ($"Error processing {rsc.Name} from {_assembly.Name}: {ex}", 1003);
 				}
 			}
 
@@ -138,12 +169,11 @@ namespace Mono.Linker.Steps
 			default:
 				return false;
 			}
-
 		}
 
-		protected virtual ResolveFromXmlStep GetExternalResolveStep (EmbeddedResource resource, AssemblyDefinition assembly)
+		protected virtual ResolveFromXmlStep GetExternalResolveStep (EmbeddedResource resource, AssemblyDefinition assembly, MarkStep markStep)
 		{
-			return new ResolveFromXmlStep (MarkStep, GetExternalDescriptor (resource), resource, assembly, "resource " + resource.Name + " in " + assembly.FullName);
+			return new ResolveFromXmlStep (markStep, GetExternalDescriptor (resource), resource, assembly, "resource " + resource.Name + " in " + assembly.FullName);
 		}
 
 		static BodySubstituterStep GetExternalSubstitutionStep (EmbeddedResource resource, AssemblyDefinition assembly)
@@ -156,9 +186,9 @@ namespace Mono.Linker.Steps
 			return new LinkAttributesStep (GetExternalDescriptor (resource), resource, assembly, "resource " + resource.Name + " in " + assembly.FullName);
 		}
 
-		ResolveFromXmlStep GetResolveStep (string descriptor)
+		static ResolveFromXmlStep GetResolveStep (string descriptor, MarkStep markStep)
 		{
-			return new ResolveFromXmlStep (MarkStep, GetDescriptor (descriptor), "descriptor " + descriptor + " from " + Assembly.GetExecutingAssembly ().FullName);
+			return new ResolveFromXmlStep (markStep, GetDescriptor (descriptor), "descriptor " + descriptor + " from " + Assembly.GetExecutingAssembly ().FullName);
 		}
 
 		protected static XPathDocument GetExternalDescriptor (EmbeddedResource resource)
