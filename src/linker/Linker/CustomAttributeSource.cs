@@ -1,4 +1,4 @@
-﻿// Licensed to the .NET Foundation under one or more agreements.
+// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -47,8 +47,18 @@ namespace Mono.Linker
 			if (!_processedAttributeXml.Add (assembly))
 				return;
 
+			foreach (var processAssembly in _context.Annotations.GetAllAssembliesActions ())
+				processAssembly (assembly);
+
 			new EmbeddedXmlStep (assembly).ProcessAttributes (_context);
 		}
+
+#if DEBUG
+		public bool HasProcessedAttributeXml (AssemblyDefinition assembly)
+		{
+			return _processedAttributeXml.Contains (assembly);
+		}
+#endif
 
 		public void AddCustomAttributes (ICustomAttributeProvider provider, IEnumerable<CustomAttribute> customAttributes)
 		{

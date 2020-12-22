@@ -71,7 +71,7 @@ namespace Mono.Linker
 		protected readonly HashSet<TypeDefinition> marked_instantiated = new HashSet<TypeDefinition> ();
 		protected readonly HashSet<MethodDefinition> indirectly_called = new HashSet<MethodDefinition> ();
 		protected readonly HashSet<TypeDefinition> types_relevant_to_variant_casting = new HashSet<TypeDefinition> ();
-
+		protected readonly List<Action<AssemblyDefinition>> all_assemblies_actions = new List<Action<AssemblyDefinition>> ();
 		public AnnotationStore (LinkContext context)
 		{
 			this.context = context;
@@ -508,6 +508,16 @@ namespace Mono.Linker
 
 			attribute = attributes.FirstOrDefault ();
 			return attribute != null;
+		}
+
+		public IEnumerable<Action<AssemblyDefinition>> GetAllAssembliesActions ()
+		{
+			return all_assemblies_actions;
+		}
+
+		public void AddAllAssembliesAction (Action<AssemblyDefinition> action)
+		{
+			all_assemblies_actions.Add (action);
 		}
 
 		public void EnqueueVirtualMethod (MethodDefinition method)

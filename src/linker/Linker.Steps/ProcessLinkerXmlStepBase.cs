@@ -98,30 +98,41 @@ namespace Mono.Linker.Steps
 				// skipped due to feature conditions.
 				var name = processAllAssemblies ? null : GetAssemblyName (iterator.Current);
 
-				AssemblyDefinition assemblyToProcess = null;
-				if (!AllowedAssemblySelector.HasFlag (AllowedAssemblies.AnyAssembly)) {
-					if (_resourceAssembly.Name.Name != name.Name) {
-						Context.LogWarning ($"Embedded XML in assembly '{_resourceAssembly.Name.Name}' contains assembly \"fullname\" attribute for another assembly '{name}'", 2101, _xmlDocumentLocation);
-						continue;
-					}
-					assemblyToProcess = _resourceAssembly;
+				if (!AllowedAssemblySelector.HasFlag (AllowedAssemblies.AnyAssembly) && _resourceAssembly.Name.Name != name.Name) {
+					Context.LogWarning ($"Embedded XML in assembly '{_resourceAssembly.Name.Name}' contains assembly \"fullname\" attribute for another assembly '{name}'", 2101, _xmlDocumentLocation);
+					continue;
 				}
 
 				if (!ShouldProcessElement (iterator.Current))
 					continue;
 
+				AssemblyDefinition assembly = null;
 				if (processAllAssemblies) {
-					foreach (AssemblyDefinition assembly in Context.ReferencedAssemblies ())
-						ProcessAssembly (assembly, iterator.Current, warnOnUnresolvedTypes: false);
+					assembly = _resourceAssembly;
 				} else {
-					AssemblyDefinition assembly = assemblyToProcess ?? GetAssembly (Context, name);
+					assembly = GetAssembly (Context, name);
 
 					if (assembly == null) {
 						Context.LogWarning ($"Could not resolve assembly '{name.Name}'", 2007, _xmlDocumentLocation);
 						continue;
 					}
+				}
 
+				if (assembly != null)
 					ProcessAssembly (assembly, iterator.Current, warnOnUnresolvedTypes: true);
+
+				if (processAllAssemblies) {
+#if DEBUG
+					var processedXmlAssemblies = Context.GetAssemblies ().Where (a => Context.CustomAttributes.HasProcessedAttributeXml (a));
+					if (_resourceAssembly == null) {
+						System.Diagnostics.Debug.Assert (!processedXmlAssemblies.Any ());
+					} else {
+						System.Diagnostics.Debug.Assert (_resourceAssembly.Name.Name == PlatformAssemblies.CoreLib);
+						System.Diagnostics.Debug.Assert (processedXmlAssemblies.Single () == _resourceAssembly);
+					}
+#endif
+					var nav = iterator.Current.Clone();
+					Annotations.AddAllAssembliesAction ((AssemblyDefinition assembly) => ProcessAssembly (assembly, nav, warnOnUnresolvedTypes: true));
 				}
 			}
 		}
