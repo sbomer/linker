@@ -212,12 +212,19 @@ namespace Mono.Linker.Tests.TestCasesRunner
 							}
 
 							var expectedTypeName = checkAttrInAssembly.ConstructorArguments[1].Value.ToString ();
-							var linkedType = linkedAssembly.MainModule.GetType (expectedTypeName);
+							TypeDefinition linkedType = linkedAssembly.MainModule.GetType (expectedTypeName);
 
 							if (linkedType == null && linkedAssembly.MainModule.HasExportedTypes) {
-								linkedType = linkedAssembly.MainModule.ExportedTypes
-									.FirstOrDefault (exported => exported.FullName == expectedTypeName)
-									?.Resolve ();
+								ExportedType exportedType = linkedAssembly.MainModule.ExportedTypes
+									.FirstOrDefault (exported => exported.FullName == expectedTypeName);
+
+								// Note that copied assemblies could have dangling references.
+								if (exportedType != null && original.EntryPoint.DeclaringType.CustomAttributes.FirstOrDefault (
+									ca => ca.AttributeType.Name == nameof (RemovedAssemblyAttribute)
+									&& ca.ConstructorArguments[0].Value.ToString () == exportedType.Scope.Name + ".dll") != null)
+									continue;
+
+								linkedType = exportedType?.Resolve ();
 							}
 
 							switch (attributeTypeName) {
@@ -567,7 +574,11 @@ namespace Mono.Linker.Tests.TestCasesRunner
 		void VerifyKeptReferencesInAssembly (CustomAttribute inAssemblyAttribute)
 		{
 			var assembly = ResolveLinkedAssembly (inAssemblyAttribute.ConstructorArguments[0].Value.ToString ());
-			var expectedReferenceNames = ((CustomAttributeArgument[]) inAssemblyAttribute.ConstructorArguments[1].Value).Select (attr => (string) attr.Value);
+			var expectedReferenceNames = ((CustomAttributeArgument[]) inAssemblyAttribute.ConstructorArguments[1].Value).Select (attr => (string) attr.Value).ToList ();
+			for (int i = 0; i < expectedReferenceNames.Count (); i++)
+				if (expectedReferenceNames[i].EndsWith (".dll"))
+					expectedReferenceNames[i] = expectedReferenceNames[i].Substring (0, expectedReferenceNames[i].LastIndexOf ("."));
+
 			Assert.That (assembly.MainModule.AssemblyReferences.Select (asm => asm.Name), Is.EquivalentTo (expectedReferenceNames));
 		}
 

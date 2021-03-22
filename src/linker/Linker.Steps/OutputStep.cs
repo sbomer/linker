@@ -269,7 +269,7 @@ namespace Mono.Linker.Steps
 			return new FileInfo (Context.GetAssemblyLocation (assembly));
 		}
 
-		protected virtual void CopyAssembly (AssemblyDefinition assembly, string directory)
+		protected virtual void CopyAssembly (AssemblyDefinition assembly, string directory, bool removeReadOnly = false)
 		{
 			// Special case.  When an assembly has embedded pdbs, link symbols is not enabled, and the assembly's action is copy,
 			// we want to match the behavior of assemblies with the other symbol types and end up with an assembly that does not have symbols.
@@ -285,23 +285,24 @@ namespace Mono.Linker.Steps
 			if (source == target)
 				return;
 
-			CopyFileAndRemoveReadOnly (source, target);
-
+			CopyFile (source, target, true);
 			if (!Context.LinkSymbols)
 				return;
 
 			var mdb = source + ".mdb";
 			if (File.Exists (mdb))
-				CopyFileAndRemoveReadOnly (mdb, target + ".mdb");
+				CopyFile (mdb, target + ".mdb", removeReadOnly);
 
 			var pdb = Path.ChangeExtension (source, "pdb");
 			if (File.Exists (pdb))
-				CopyFileAndRemoveReadOnly (pdb, Path.ChangeExtension (target, "pdb"));
+				CopyFile (pdb, Path.ChangeExtension (target, "pdb"), removeReadOnly);
 		}
 
-		static void CopyFileAndRemoveReadOnly (string src, string dest)
+		static void CopyFile (string src, string dest, bool removeReadOnly)
 		{
 			File.Copy (src, dest, true);
+			if (!removeReadOnly)
+				return;
 
 			System.IO.FileAttributes attrs = File.GetAttributes (dest);
 
