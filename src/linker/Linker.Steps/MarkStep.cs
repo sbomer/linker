@@ -267,6 +267,7 @@ namespace Mono.Linker.Steps
 
 			foreach (var ca in type.CustomAttributes) {
 				TypeDefinition caType = ca.AttributeType.Resolve ();
+				// OK (we aren't marking the attr type)
 				if (caType.Name == "DynamicInterfaceCastableImplementationAttribute" && caType.Namespace == "System.Runtime.InteropServices")
 					return true;
 			}
@@ -311,6 +312,7 @@ namespace Mono.Linker.Steps
 			}
 
 			Annotations.Mark (type, reason);
+			// Should mark forwarders for base type typereference
 			var baseTypeDefinition = type.BaseType?.Resolve ();
 			if (includeBaseTypes && baseTypeDefinition != null) {
 				MarkEntireTypeInternal (baseTypeDefinition, includeBaseTypes: true, includeInterfaceTypes, new DependencyInfo (DependencyKind.BaseType, type), type);
@@ -320,6 +322,7 @@ namespace Mono.Linker.Steps
 
 			if (type.HasInterfaces) {
 				foreach (InterfaceImplementation iface in type.Interfaces) {
+					// Should mark forwarders for interface type typereference
 					var interfaceTypeDefinition = iface.InterfaceType.Resolve ();
 					if (includeInterfaceTypes && interfaceTypeDefinition != null)
 						MarkEntireTypeInternal (interfaceTypeDefinition, includeBaseTypes, includeInterfaceTypes: true, new DependencyInfo (reason.Kind, type), type);
@@ -680,6 +683,7 @@ namespace Mono.Linker.Steps
 		{
 			if (type.HasInterfaces) {
 				foreach (var intf in type.Interfaces) {
+					// OK: doesn't mark anything.
 					TypeDefinition resolvedInterface = intf.InterfaceType.Resolve ();
 					if (resolvedInterface == null)
 						continue;
@@ -699,6 +703,7 @@ namespace Mono.Linker.Steps
 
 			if (typeToExamine.HasInterfaces) {
 				foreach (var iface in typeToExamine.Interfaces) {
+					// OK: doesn't mark anything
 					var resolved = iface.InterfaceType.Resolve ();
 					if (resolved == null)
 						continue;
@@ -726,6 +731,7 @@ namespace Mono.Linker.Steps
 
 			if (spec.MarshalInfo is CustomMarshalInfo marshaler) {
 				MarkType (marshaler.ManagedType, reason, sourceLocationMember);
+				// Should mark forwarders pointed to by ManagedType typerefence
 				TypeDefinition type = marshaler.ManagedType.Resolve ();
 				if (type != null) {
 					MarkICustomMarshalerMethods (type, in reason, sourceLocationMember);
@@ -754,6 +760,7 @@ namespace Mono.Linker.Steps
 					if (UnconditionalSuppressMessageAttributeState.TypeRefHasUnconditionalSuppressions (ca.Constructor.DeclaringType))
 						_context.Suppressions.AddSuppression (ca, provider);
 
+					// OK: doesn't mark the attribute type
 					var resolvedAttributeType = ca.AttributeType.Resolve ();
 					if (resolvedAttributeType == null) {
 						HandleUnresolvedType (ca.AttributeType);
@@ -819,13 +826,13 @@ namespace Mono.Linker.Steps
 					return;
 				}
 			} else if (dynamicDependency.Type is TypeReference typeReference) {
-				type = typeReference.Resolve ();
+				type = typeReference.Resolve (); // handled below
 				if (type == null) {
 					_context.LogWarning ($"Unresolved type '{typeReference}' in DynamicDependencyAtribute", 2036, context);
 					return;
 				}
 			} else {
-				type = context.DeclaringType.Resolve ();
+				type = context.DeclaringType.Resolve (); // OK, context should be in the same assembly as the declaringtype already
 				if (type == null) {
 					_context.LogWarning ($"Unresolved type '{context.DeclaringType}' in DynamicDependencyAttribute", 2036, context);
 					return;
@@ -913,6 +920,7 @@ namespace Mono.Linker.Steps
 
 			TypeDefinition td;
 			if (args.Count >= 2 && args[1].Value is string typeName) {
+				// should handle case where type is resolved through a forwarder
 				td = _context.TypeNameResolver.ResolveTypeName (assembly ?? (context as MemberReference).Module.Assembly, typeName)?.Resolve ();
 				if (td == null) {
 					_context.LogWarning (
@@ -920,6 +928,7 @@ namespace Mono.Linker.Steps
 					return;
 				}
 			} else {
+				// OK: DeclaringType should be in same assembly already
 				td = context.DeclaringType.Resolve ();
 			}
 
@@ -1029,6 +1038,8 @@ namespace Mono.Linker.Steps
 			MarkCustomAttributeArguments (source, ca);
 
 			TypeReference constructor_type = ca.Constructor.DeclaringType;
+			// Should mark forwarders if ctor_type points to one
+			// since we will use resolved type to mark things later
 			TypeDefinition type = constructor_type.Resolve ();
 
 			if (type == null) {
@@ -1132,6 +1143,8 @@ namespace Mono.Linker.Steps
 		protected virtual void MarkSecurityAttribute (SecurityAttribute sa, in DependencyInfo reason, IMemberDefinition sourceLocationMember)
 		{
 			TypeReference security_type = sa.AttributeType;
+			// should mark forwarder referenced by security_type
+			// since the typedef is marked belowm
 			TypeDefinition type = security_type.Resolve ();
 			if (type == null) {
 				HandleUnresolvedType (security_type);
@@ -1175,6 +1188,9 @@ namespace Mono.Linker.Steps
 				if (property != null)
 					return property;
 
+				// Problem. We use this to mark the property later.
+				// Change this from GetProperty to MarkProperty, then as we resolve
+				// base types we can mark the TypeReference (to keep forwarders referenced from copy assembly)
 				type = type.BaseType?.Resolve ();
 			}
 
@@ -1211,6 +1227,7 @@ namespace Mono.Linker.Steps
 				if (field != null)
 					return field;
 
+				// Same as GetProperty above
 				type = type.BaseType?.Resolve ();
 			}
 
@@ -1224,6 +1241,7 @@ namespace Mono.Linker.Steps
 				if (method != null)
 					return method;
 
+				// Same as GetProperty above
 				type = type.BaseType?.Resolve ();
 			}
 
