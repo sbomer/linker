@@ -19,7 +19,7 @@ namespace Mono.Linker.Tests.Cases.TypeForwarding
 	[SetupCompileAfter ("Forwarder.dll", new[] { "Dependencies/MyEnumForwarder.cs" }, references: new[] { "Implementation.dll" })]
 
 	[KeptTypeInAssembly ("Forwarder.dll", typeof (UsedToReferenceForwarderAssembly))]
-	// [KeptTypeInAssembly ("Implementation.dll", "Mono.Linker.Tests.Cases.TypeForwarding.Dependencies.MyEnum")]
+	[KeptTypeInAssembly ("Implementation.dll", "Mono.Linker.Tests.Cases.TypeForwarding.Dependencies.MyEnum")]
 	class AttributeEnumArgumentForwardedCopyUsed
 	{
 		static void Main ()
