@@ -37,14 +37,13 @@ namespace Mono.Linker.Tests.Cases.Reflection
 
 		[Kept]
 		[KeptAttributeAttribute (typeof (DynamicallyAccessedMembersAttribute))]
-		[KeptAttributeAttribute (typeof (UnconditionalSuppressMessageAttribute))]
-		// TODO: it should be possible to suppress this on the method instead
-		[UnconditionalSuppressMessage ("TrimAnalysis", "IL2112")]
 		[DynamicallyAccessedMembers (DynamicallyAccessedMemberTypes.PublicMethods)]
 		class Suppressed
 		{
 			[Kept]
 			[KeptAttributeAttribute (typeof (RequiresUnreferencedCodeAttribute))]
+			[KeptAttributeAttribute (typeof (UnconditionalSuppressMessageAttribute))]
+			[UnconditionalSuppressMessage ("TrimAnalysis", "IL2112")]
 			[RequiresUnreferencedCode ("--RUC on Suppressed--")]
 			public void RUCMethod () { }
 		}

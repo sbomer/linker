@@ -1607,6 +1607,13 @@ namespace Mono.Linker.Steps
 				Annotations.Mark (field, reason);
 			}
 
+			// Attribute processing must happen before we warn for reflection access
+			// so that warning suppressions on this method are taken into account.
+			if (!Annotations.IsProcessed (field)) {
+ 				using var _ = _scopeStack.PushScope (new MessageOrigin (field));
+				MarkCustomAttributes (field, new DependencyInfo (DependencyKind.CustomAttribute, field));
+			}
+
 			if (reason.Kind == DependencyKind.DynamicallyAccessedMemberOnType)
 				ReportWarningsForTypeHierarchyReflectionAccess (field);
 
@@ -1618,7 +1625,6 @@ namespace Mono.Linker.Steps
 
 			using var fieldScope = _scopeStack.PushScope (new MessageOrigin (field));
 			MarkType (field.FieldType, new DependencyInfo (DependencyKind.FieldType, field));
-			MarkCustomAttributes (field, new DependencyInfo (DependencyKind.CustomAttribute, field));
 			MarkMarshalSpec (field, new DependencyInfo (DependencyKind.FieldMarshalSpec, field));
 			DoAdditionalFieldProcessing (field);
 
@@ -2767,6 +2773,13 @@ namespace Mono.Linker.Steps
 
 			EnqueueMethod (method, reason, _scopeStack.CurrentScope);
 
+			// Attribute processing must happen before we warn for reflection access
+			// so that warning suppressions on this method are taken into account.
+			if (!Annotations.IsProcessed (method)) {
+				using var _ = _scopeStack.PushScope (new MessageOrigin (method));
+				MarkCustomAttributes (method, new DependencyInfo (DependencyKind.CustomAttribute, method));
+			}
+
 			// Use the original reason as it's important to correctly generate warnings
 			// the updated reason is only useful for better tracking of dependencies.
 			ReportWarningsForReflectionAccess (method, originalReasonKind);
@@ -2980,7 +2993,6 @@ namespace Mono.Linker.Steps
 
 			if (!markedForCall)
 				MarkType (method.DeclaringType, new DependencyInfo (DependencyKind.DeclaringType, method));
-			MarkCustomAttributes (method, new DependencyInfo (DependencyKind.CustomAttribute, method));
 			MarkSecurityDeclarations (method, new DependencyInfo (DependencyKind.CustomAttribute, method));
 
 			MarkGenericParameterProvider (method);
