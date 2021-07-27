@@ -22,13 +22,14 @@ namespace Mono.Linker
 			InitializedAssemblies = new HashSet<AssemblyDefinition> ();
 		}
 
-		void AddSuppression (CustomAttribute ca, ICustomAttributeProvider provider)
+		bool AddSuppression (CustomAttribute ca, ICustomAttributeProvider provider, out SuppressMessageInfo info)
 		{
 			SuppressMessageInfo info;
 			if (!TryDecodeSuppressMessageAttributeData (ca, out info))
-				return;
+				return false;
 
 			AddSuppression (info, provider);
+			return true;
 		}
 
 		void AddSuppression (SuppressMessageInfo info, ICustomAttributeProvider provider)
@@ -96,14 +97,19 @@ namespace Mono.Linker
 			if (!_context.CustomAttributes.HasAny (provider))
 				return false;
 
+			bool isSuppressed = false;
 			foreach (var ca in _context.CustomAttributes.GetCustomAttributes (provider)) {
-				if (TypeRefHasUnconditionalSuppressions (ca.Constructor.DeclaringType) &&
-					provider is not ModuleDefinition or AssemblyDefinition)
-					AddSuppression (ca, provider);
+				if (!TypeRefHasUnconditionalSuppressions (ca.Constructor.DeclaringType) ||
+					provider is ModuleDefinition or AssemblyDefinition)
+					continue;
+
+				if (AddSuppression (ca, provider, out caInfo) && caInfo.Id == id) {
+					isSuppressed = true;
+					info = caInfo;
+				}
 			}
 
-			return _suppressions.TryGetValue (provider, out suppressions) &&
-				suppressions.TryGetValue (id, out info);
+			return isSuppressed;
 		}
 
 		static bool TryDecodeSuppressMessageAttributeData (CustomAttribute attribute, out SuppressMessageInfo info)
