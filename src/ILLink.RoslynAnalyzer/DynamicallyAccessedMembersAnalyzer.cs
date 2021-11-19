@@ -36,11 +36,19 @@ namespace ILLink.RoslynAnalyzer
 
 		public override void Initialize (AnalysisContext context)
 		{
-			context.EnableConcurrentExecution ();
+			if (!string.IsNullOrEmpty (Environment.GetEnvironmentVariable ("DEBUG_TRIM_ANALYZER"))) {
+				Console.WriteLine("waiting for debugger attach...");
+				while (!System.Diagnostics.Debugger.IsAttached)
+					System.Threading.Thread.Sleep(100);
+			}
+			// context.EnableConcurrentExecution ();
 			context.ConfigureGeneratedCodeAnalysis (GeneratedCodeAnalysisFlags.ReportDiagnostics);
 			context.RegisterOperationBlockAction (context => {
 				if (context.OwningSymbol.HasAttribute (RequiresUnreferencedCodeAnalyzer.FullyQualifiedRequiresUnreferencedCodeAttribute))
 					return;
+
+				if (context.OwningSymbol.Name == "RequireThisPublicMethods")
+					System.Diagnostics.Debugger.Break();
 
 				foreach (var operationBlock in context.OperationBlocks) {
 					ControlFlowGraph cfg = context.GetControlFlowGraph (operationBlock);
@@ -108,6 +116,12 @@ namespace ILLink.RoslynAnalyzer
 		{
 			if (sourceValue is not SymbolValue source || targetValue is not SymbolValue target)
 				yield break;
+
+			// // concrete type passed as method generic argument
+			// if (sourceValue.Source is INamedTypeSymbol knownType) {
+			// 	// TODO: cache these patterns to avoid producing duplicate warnings
+			// 	genericArgumentType.GetMembers(bindingFlags...) // etc.
+			// }
 
 			Debug.Assert (target.Source.Kind is not SymbolKind.NamedType);
 			var damtOnTarget = target.DynamicallyAccessedMemberTypes;
