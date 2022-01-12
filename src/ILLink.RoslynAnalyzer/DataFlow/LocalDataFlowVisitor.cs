@@ -16,21 +16,15 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 	// - field
 	// - parameter
 	// - method return
-	public abstract class LocalDataFlowVisitor<TValue, TValueLattice> : OperationWalker<DataFlowState<LocalState<TValue>>, TValue>,
-		ITransfer<BlockProxy, LocalState<TValue>, LocalStateLattice<TValue, TValueLattice>>
+	public abstract class LocalDataFlowVisitor<TValue> : OperationWalker<DataFlowState<LocalState<TValue>>, TValue>,
+		ITransfer<BlockProxy, LocalState<TValue>>
 		// This struct constraint prevents warnings due to possible null returns from the visitor methods.
 		// Note that this assumes that default(TValue) is equal to the TopValue.
-		where TValue : struct, IEquatable<TValue>
-		where TValueLattice : ILattice<TValue>
+		where TValue : struct, ILatticeValue<TValue>
 	{
-		protected readonly LocalStateLattice<TValue, TValueLattice> LocalStateLattice;
-
 		protected readonly OperationBlockAnalysisContext Context;
 
-		protected TValue TopValue => LocalStateLattice.Lattice.ValueLattice.Top;
-
-		public LocalDataFlowVisitor (LocalStateLattice<TValue, TValueLattice> lattice, OperationBlockAnalysisContext context) =>
-			(LocalStateLattice, Context) = (lattice, context);
+		public LocalDataFlowVisitor (OperationBlockAnalysisContext context) => Context = context;
 
 		public void Transfer (BlockProxy block, DataFlowState<LocalState<TValue>> state)
 		{
@@ -92,7 +86,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			case ILocalReferenceOperation localRef:
 				state.Current.Set (new LocalKey (localRef.Local), value);
 				if (state.Exception != null)
-					state.Exception.Value = LocalStateLattice.Meet (state.Exception.Value, state.Current);
+					state.Exception.Value = state.Exception.Value.Meet (state.Current);
 				break;
 			case IFieldReferenceOperation:
 			case IParameterReferenceOperation:
@@ -134,14 +128,14 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			state.Current.Set (new LocalKey (operation.Id), value);
 			if (state.Exception != null)
 				// TODO: optimize this to not meet the whole value, but just modify one value without copying.
-				state.Exception.Value = LocalStateLattice.Meet (state.Exception.Value, state.Current);
+				state.Exception.Value = state.Exception.Value.Meet (state.Current);
 			return value;
 		}
 
 		public override TValue VisitExpressionStatement (IExpressionStatementOperation operation, DataFlowState<LocalState<TValue>> state)
 		{
 			Visit (operation.Operation, state);
-			return TopValue;
+			return default;
 		}
 
 		public override TValue VisitInvocation (IInvocationOperation operation, DataFlowState<LocalState<TValue>> state)
@@ -154,7 +148,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			foreach (var argument in operation.Arguments)
 				VisitArgument (argument, state);
 
-			return TopValue;
+			return default;
 		}
 
 		public static IMethodSymbol GetPropertyMethod (IPropertyReferenceOperation operation)
@@ -184,7 +178,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 				HandleReceiverArgument (instanceValue, GetPropertyMethod (operation), operation);
 			}
 
-			return TopValue;
+			return default;
 		}
 
 		public override TValue VisitArgument (IArgumentOperation operation, DataFlowState<LocalState<TValue>> state)
@@ -202,13 +196,13 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 				return value;
 			}
 
-			return TopValue;
+			return default;
 		}
 
 		public override TValue VisitConversion (IConversionOperation operation, DataFlowState<LocalState<TValue>> state)
 		{
 			var operandValue = Visit (operation.Operand, state);
-			return operation.OperatorMethod == null ? operandValue : TopValue;
+			return operation.OperatorMethod == null ? operandValue : default;
 		}
 	}
 }

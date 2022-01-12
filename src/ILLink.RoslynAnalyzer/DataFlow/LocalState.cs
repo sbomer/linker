@@ -30,8 +30,8 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 	}
 
 	// Wrapper struct exists purely to substitute a concrete LocalKey for TKey of DefaultValueDictionary
-	public struct LocalState<TValue> : IEquatable<LocalState<TValue>>
-		where TValue : IEquatable<TValue>
+	public struct LocalState<TValue> : ILatticeValue<LocalState<TValue>>
+		where TValue : struct, ILatticeValue<TValue>
 	{
 		public DefaultValueDictionary<LocalKey, TValue> Dictionary;
 
@@ -44,23 +44,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 		public void Set (LocalKey key, TValue value) => Dictionary.Set (key, value);
 
 		public override string ToString () => Dictionary.ToString ();
-	}
 
-	// Wrapper struct exists purely to substitute a concrete LocalKey for TKey of DictionaryLattice
-	public readonly struct LocalStateLattice<TValue, TValueLattice> : ILattice<LocalState<TValue>>
-		where TValue : struct, IEquatable<TValue>
-		where TValueLattice : ILattice<TValue>
-	{
-		public readonly DictionaryLattice<LocalKey, TValue, TValueLattice> Lattice;
-
-		public LocalStateLattice (TValueLattice valueLattice)
-		{
-			Lattice = new DictionaryLattice<LocalKey, TValue, TValueLattice> (valueLattice);
-			Top = new (Lattice.Top);
-		}
-
-		public LocalState<TValue> Top { get; }
-
-		public LocalState<TValue> Meet (LocalState<TValue> left, LocalState<TValue> right) => new (Lattice.Meet (left.Dictionary, right.Dictionary));
+		public LocalState<TValue> Meet (LocalState<TValue> other) => new (this.Dictionary.Meet (other.Dictionary));
 	}
 }

@@ -48,7 +48,6 @@ namespace Mono.Linker.Dataflow
 	abstract partial class MethodBodyScanner
 	{
 		protected readonly LinkContext _context;
-		protected static ValueSetLattice<SingleValue> MultiValueLattice => default;
 
 		protected MethodBodyScanner (LinkContext context)
 		{
@@ -100,7 +99,7 @@ namespace Mono.Linker.Dataflow
 
 		private static StackSlot MergeStackElement (StackSlot a, StackSlot b)
 		{
-			return new StackSlot (MultiValueLattice.Meet (a.Value, b.Value));
+			return new StackSlot (a.Value.Meet (b.Value));
 		}
 
 		// Merge stacks together. This may return the first stack, the stack length must be the same for the two stacks.
@@ -200,7 +199,7 @@ namespace Mono.Linker.Dataflow
 					// If the previous value came from a previous basic block, then some other use of 
 					// the local could see the previous value, so we must merge the new value with the 
 					// old value.
-					newValue.Value = MultiValueLattice.Meet (existingValue.Value, valueToStore);
+					newValue.Value = existingValue.Value.Meet (valueToStore);
 				}
 				valueCollection[collectionKey] = newValue;
 			} else if (maxTrackedValues == null || valueCollection.Count < maxTrackedValues) {
@@ -583,7 +582,7 @@ namespace Mono.Linker.Dataflow
 						}
 						if (hasReturnValue) {
 							StackSlot retValue = PopUnknown (currentStack, 1, methodBody, operation.Offset);
-							ReturnValue = MultiValueLattice.Meet (ReturnValue, retValue.Value);
+							ReturnValue = ReturnValue.Meet (retValue.Value);
 						}
 						ClearStack (ref currentStack);
 						break;

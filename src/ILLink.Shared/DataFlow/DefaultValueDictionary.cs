@@ -13,10 +13,10 @@ namespace ILLink.Shared.DataFlow
 	// the default value, or another value. The default value is never explicitly stored in the dictionary,
 	// and the empty dictionary (where all possible keys have the default value) is represented without
 	// actually allocating a dictionary.
-	public struct DefaultValueDictionary<TKey, TValue> : IEquatable<DefaultValueDictionary<TKey, TValue>>,
+	public struct DefaultValueDictionary<TKey, TValue> : ILatticeValue<DefaultValueDictionary<TKey, TValue>>,
 		IEnumerable<KeyValuePair<TKey, TValue>>
 		where TKey : IEquatable<TKey>
-		where TValue : IEquatable<TValue>
+		where TValue : struct, ILatticeValue<TValue>
 	{
 		Dictionary<TKey, TValue>? Dictionary;
 
@@ -80,6 +80,18 @@ namespace ILLink.Shared.DataFlow
 			sb.Append (Environment.NewLine).Append ("\t_ -> ").Append (DefaultValue.ToString ());
 			sb.Append (Environment.NewLine).Append ("}");
 			return sb.ToString ();
+		}
+
+		public DefaultValueDictionary<TKey, TValue> Meet (DefaultValueDictionary<TKey, TValue> other)
+		{
+			var met = new DefaultValueDictionary<TKey, TValue> (this);
+			foreach (var kvp in other) {
+				TKey key = kvp.Key;
+				TValue otherValue = kvp.Value;
+				met.Set (key, this.Get (key).Meet (otherValue));
+			}
+			return met;
+
 		}
 	}
 }

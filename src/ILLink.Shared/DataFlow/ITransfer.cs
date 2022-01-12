@@ -20,9 +20,8 @@ namespace ILLink.Shared.DataFlow
 
 	// TLattice isn't typically used in the implementation except to provide the "Top" value.
 	// This expresses the conceptual constraint that the transferred values are part of a lattice.
-	public interface ITransfer<TOperation, TValue, TLattice>
-		where TValue : struct, IEquatable<TValue>
-		where TLattice : ILattice<TValue>
+	public interface ITransfer<TOperation, TValue>
+		where TValue : struct, IEquatable<TValue>, ILatticeValue<TValue>
 	{
 		// Transfer should mutate the input value to reflect the effect of
 		// computing this operation. When using value types, ensure that

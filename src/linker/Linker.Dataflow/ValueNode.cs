@@ -300,13 +300,11 @@ namespace ILLink.Shared.TrimAnalysis
 
 	partial record ArrayValue
 	{
-		static ValueSetLattice<SingleValue> MultiValueLattice => default;
-
 		public static MultiValue Create (MultiValue size, TypeReference elementType)
 		{
-			MultiValue result = MultiValueLattice.Top;
+			MultiValue result = default;
 			foreach (var sizeValue in size) {
-				result = MultiValueLattice.Meet (result, new MultiValue (new ArrayValue (sizeValue, elementType)));
+				result = result.Meet (new MultiValue (new ArrayValue (sizeValue, elementType)));
 			}
 
 			return result;

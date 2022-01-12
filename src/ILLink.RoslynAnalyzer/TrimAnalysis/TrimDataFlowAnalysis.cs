@@ -16,7 +16,6 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 	public class TrimDataFlowAnalysis
 		: ForwardDataFlowAnalysis<
 			LocalState<ValueSet<SingleValue>>,
-			LocalStateLattice<ValueSet<SingleValue>, ValueSetLattice<SingleValue>>,
 			BlockProxy,
 			RegionProxy,
 			ControlFlowGraphProxy,
@@ -25,21 +24,18 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 	{
 		readonly ControlFlowGraphProxy ControlFlowGraph;
 
-		readonly LocalStateLattice<ValueSet<SingleValue>, ValueSetLattice<SingleValue>> Lattice;
-
 		readonly OperationBlockAnalysisContext Context;
 
 		public TrimDataFlowAnalysis (OperationBlockAnalysisContext context, ControlFlowGraph cfg)
 		{
 			ControlFlowGraph = new ControlFlowGraphProxy (cfg);
-			Lattice = new (new ValueSetLattice<SingleValue> ());
 			Context = context;
 		}
 
 		public IEnumerable<TrimAnalysisPattern> ComputeTrimAnalysisPatterns ()
 		{
-			var visitor = new TrimAnalysisVisitor (Lattice, Context);
-			Fixpoint (ControlFlowGraph, Lattice, visitor);
+			var visitor = new TrimAnalysisVisitor (Context);
+			Fixpoint (ControlFlowGraph, visitor);
 			return visitor.TrimAnalysisPatterns;
 		}
 

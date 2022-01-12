@@ -17,14 +17,12 @@ using StateValue =
 
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
-	public class TrimAnalysisVisitor : LocalDataFlowVisitor<MultiValue, ValueSetLattice<SingleValue>>
+	public class TrimAnalysisVisitor : LocalDataFlowVisitor<MultiValue>
 	{
 		public readonly TrimAnalysisPatternStore TrimAnalysisPatterns;
 
-		public TrimAnalysisVisitor (
-			LocalStateLattice<MultiValue, ValueSetLattice<SingleValue>> lattice,
-			OperationBlockAnalysisContext context
-		) : base (lattice, context)
+		public TrimAnalysisVisitor (OperationBlockAnalysisContext context)
+			: base (context)
 		{
 			TrimAnalysisPatterns = new TrimAnalysisPatternStore ();
 		}
@@ -59,7 +57,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			if (propertyMethod.MethodKind == MethodKind.PropertyGet)
 				return new MethodReturnValue (propertyMethod);
 
-			return TopValue;
+			return default;
 		}
 
 		public override MultiValue VisitConversion (IConversionOperation operation, StateValue state)
@@ -83,7 +81,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		public override MultiValue VisitInstanceReference (IInstanceReferenceOperation instanceRef, StateValue state)
 		{
 			if (instanceRef.ReferenceKind != InstanceReferenceKind.ContainingTypeInstance)
-				return TopValue;
+				return default;
 
 			// The instance reference operation represents a 'this' or 'base' reference to the containing type,
 			// so we get the annotation from the containing method.
@@ -104,7 +102,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			if (typeOfOperation.TypeOperand is ITypeParameterSymbol typeParameter)
 				return new GenericParameterValue (typeParameter);
 
-			return TopValue;
+			return default;
 		}
 
 		// Override handlers for situations where annotated locations may be involved in reflection access:
@@ -118,7 +116,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 
 		public override void HandleAssignment (MultiValue source, MultiValue target, IOperation operation)
 		{
-			if (target.Equals (TopValue))
+			if (target.Equals (default))
 				return;
 
 			// TODO: consider not tracking patterns unless the target is something

@@ -10,7 +10,7 @@ using System.Text;
 
 namespace ILLink.Shared.DataFlow
 {
-	public readonly struct ValueSet<TValue> : IEquatable<ValueSet<TValue>>, IEnumerable<TValue>
+	public readonly struct ValueSet<TValue> : ILatticeValue<ValueSet<TValue>>, IEnumerable<TValue>
 		where TValue : notnull
 	{
 		// Since we're going to do lot of type checks for this class a lot, it is much more efficient
@@ -144,21 +144,21 @@ namespace ILLink.Shared.DataFlow
 				? valuesSet.Contains (value)
 				: EqualityComparer<TValue>.Default.Equals (value, (TValue) _values);
 
-		internal static ValueSet<TValue> Meet (ValueSet<TValue> left, ValueSet<TValue> right)
+		public ValueSet<TValue> Meet (ValueSet<TValue> other)
 		{
-			if (left._values == null)
-				return right;
-			if (right._values == null)
-				return left;
+			if (this._values == null)
+				return other;
+			if (other._values == null)
+				return this;
 
-			if (left._values is not EnumerableValues && right.Contains ((TValue) left._values))
-				return right;
+			if (this._values is not EnumerableValues && other.Contains ((TValue) this._values))
+				return other;
 
-			if (right._values is not EnumerableValues && left.Contains ((TValue) right._values))
-				return left;
+			if (other._values is not EnumerableValues && this.Contains ((TValue) other._values))
+				return this;
 
-			var values = new EnumerableValues (left);
-			values.UnionWith (right);
+			var values = new EnumerableValues (this);
+			values.UnionWith (other);
 			return new ValueSet<TValue> (values);
 		}
 

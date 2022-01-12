@@ -688,11 +688,11 @@ namespace Mono.Linker.Dataflow
 			case IntrinsicId.Type_get_TypeHandle: {
 					foreach (var value in methodParams[0]) {
 						if (value is SystemTypeValue typeValue)
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, new RuntimeTypeHandleValue (typeValue.TypeRepresented));
+							methodReturnValue = methodReturnValue.Meet (new RuntimeTypeHandleValue (typeValue.TypeRepresented));
 						else if (value == NullValue.Instance)
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, value);
+							methodReturnValue = methodReturnValue.Meet (value);
 						else
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, UnknownValue.Instance);
+							methodReturnValue = methodReturnValue.Meet (UnknownValue.Instance);
 					}
 				}
 				break;
@@ -968,7 +968,7 @@ namespace Mono.Linker.Dataflow
 						TypeDefinition? staticType = (valueNode as IValueWithStaticType)?.StaticType;
 						if (staticType is null) {
 							// We don't know anything about the type GetType was called on. Track this as a usual result of a method call without any annotations
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition));
+							methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition));
 						} else if (staticType.IsSealed || staticType.IsTypeOf ("System", "Delegate")) {
 							// We can treat this one the same as if it was a typeof() expression
 
@@ -983,7 +983,7 @@ namespace Mono.Linker.Dataflow
 							// This can be seen a little bit as a violation of the annotation, but we already have similar cases
 							// where a parameter is annotated and if something in the method sets a specific known type to it
 							// we will also make it just work, even if the annotation doesn't match the usage.
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, new SystemTypeValue (staticType));
+							methodReturnValue = methodReturnValue.Meet (new SystemTypeValue (staticType));
 						} else {
 							// Make sure the type is marked (this will mark it as used via reflection, which is sort of true)
 							// This should already be true for most cases (method params, fields, ...), but just in case
@@ -995,7 +995,7 @@ namespace Mono.Linker.Dataflow
 							// Return a value which is "unknown type" with annotation. For now we'll use the return value node
 							// for the method, which means we're loosing the information about which staticType this
 							// started with. For now we don't need it, but we can add it later on.
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition, annotation));
+							methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition, annotation));
 						}
 					}
 				}
@@ -1025,7 +1025,7 @@ namespace Mono.Linker.Dataflow
 								// Intentionally ignore - it's not wrong for code to call Type.GetType on non-existing name, the code might expect null/exception back.
 							} else {
 								_markStep.MarkTypeVisibleToReflection (foundTypeRef, foundType, new DependencyInfo (DependencyKind.AccessedViaReflection, callingMethodDefinition));
-								methodReturnValue = MultiValueLattice.Meet (methodReturnValue, new SystemTypeValue (foundType));
+								methodReturnValue = methodReturnValue.Meet (new SystemTypeValue (foundType));
 								_context.MarkingHelpers.MarkMatchingExportedType (foundType, typeAssembly, new DependencyInfo (DependencyKind.AccessedViaReflection, foundType));
 							}
 						} else if (typeNameValue == NullValue.Instance) {
@@ -1033,7 +1033,7 @@ namespace Mono.Linker.Dataflow
 						} else if (typeNameValue is ValueWithDynamicallyAccessedMembers valueWithDynamicallyAccessedMembers && valueWithDynamicallyAccessedMembers.DynamicallyAccessedMemberTypes != 0) {
 							// Propagate the annotation from the type name to the return value. Annotation on a string value will be fullfilled whenever a value is assigned to the string with annotation.
 							// So while we don't know which type it is, we can guarantee that it will fulfill the annotation.
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition, valueWithDynamicallyAccessedMembers.DynamicallyAccessedMemberTypes));
+							methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition, valueWithDynamicallyAccessedMembers.DynamicallyAccessedMemberTypes));
 						} else {
 							analysisContext.ReportWarning ($"Unrecognized value passed to the parameter 'typeName' of method '{calledMethod.GetDisplayName ()}'. It's not possible to guarantee the availability of the target type.", 2057);
 						}
@@ -1152,7 +1152,7 @@ namespace Mono.Linker.Dataflow
 
 									if (matchingNestedTypes != null) {
 										for (int i = 0; i < matchingNestedTypes.Length; i++)
-											methodReturnValue = MultiValueLattice.Meet (methodReturnValue, new SystemTypeValue (matchingNestedTypes[i]));
+											methodReturnValue = methodReturnValue.Meet (new SystemTypeValue (matchingNestedTypes[i]));
 									}
 								} else {
 									// Otherwise fall back to the bitfield requirements
@@ -1198,7 +1198,7 @@ namespace Mono.Linker.Dataflow
 							// that only matters when we use them, so Type.GetType is the difference really.
 							// For diagnostics we actually don't want to track the Type.AssemblyQualifiedName
 							// as the annotation does not come from that call, but from its input.
-							transformedResult = MultiValueLattice.Meet (transformedResult, valueWithDynamicallyAccessedMembers);
+							transformedResult = transformedResult.Meet (valueWithDynamicallyAccessedMembers);
 						} else {
 							transformedResult = new ();
 							break;
@@ -1249,18 +1249,18 @@ namespace Mono.Linker.Dataflow
 									propagatedMemberTypes |= DynamicallyAccessedMemberTypes.PublicProperties;
 							}
 
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition, propagatedMemberTypes));
+							methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition, propagatedMemberTypes));
 						} else if (value is SystemTypeValue systemTypeValue) {
 							if (systemTypeValue.TypeRepresented.BaseType is TypeReference baseTypeRef && _context.TryResolve (baseTypeRef) is TypeDefinition baseTypeDefinition)
-								methodReturnValue = MultiValueLattice.Meet (methodReturnValue, new SystemTypeValue (baseTypeDefinition));
+								methodReturnValue = methodReturnValue.Meet (new SystemTypeValue (baseTypeDefinition));
 							else
-								methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition));
+								methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition));
 						} else if (value == NullValue.Instance) {
 							// Ignore nulls - null.BaseType will fail at runtime, but it has no effect on static analysis
 							continue;
 						} else {
 							// Unknown input - propagate a return value without any annotation - we know it's a Type but we know nothing about it
-							methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition));
+							methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition));
 						}
 					}
 				}
@@ -1446,7 +1446,7 @@ namespace Mono.Linker.Dataflow
 							&& valueWithDynamicallyAccessedMembers.DynamicallyAccessedMemberTypes == DynamicallyAccessedMemberTypes.All)
 							returnMemberTypes = DynamicallyAccessedMemberTypes.All;
 
-						methodReturnValue = MultiValueLattice.Meet (methodReturnValue, GetMethodReturnValue (calledMethodDefinition, returnMemberTypes));
+						methodReturnValue = methodReturnValue.Meet (GetMethodReturnValue (calledMethodDefinition, returnMemberTypes));
 					}
 				}
 				break;
@@ -1884,7 +1884,7 @@ namespace Mono.Linker.Dataflow
 			bool foundAny = false;
 			foreach (var method in typeDefinition.GetMethodsOnTypeHierarchy (_context, m => m.Name == methodName, bindingFlags)) {
 				MarkMethod (analysisContext, method);
-				methodReturnValue = MultiValueLattice.Meet (methodReturnValue, new SystemReflectionMethodBaseValue (method));
+				methodReturnValue = methodReturnValue.Meet (new SystemReflectionMethodBaseValue (method));
 				foundAny = true;
 			}
 
@@ -1893,7 +1893,7 @@ namespace Mono.Linker.Dataflow
 			// This also prevents warnings in such case, since if we don't set the return value it will be
 			// "unknown" and consumers may warn.
 			if (!foundAny)
-				methodReturnValue = MultiValueLattice.Meet (methodReturnValue, NullValue.Instance);
+				methodReturnValue = methodReturnValue.Meet (NullValue.Instance);
 		}
 
 		void RequireDynamicallyAccessedMembers (in AnalysisContext analysisContext, in MultiValue value, ValueWithDynamicallyAccessedMembers targetValue)
