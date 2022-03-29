@@ -42,6 +42,9 @@ namespace ILLink.Shared.DataFlow
 		readonly Dictionary<TRegion, TValue> finallyInputState;
 
 		readonly TControlFlowGraph cfg;
+
+		public TControlFlowGraph ControlFlowGraph => cfg;
+
 		readonly TLattice lattice;
 
 		public ControlFlowGraphState (TControlFlowGraph cfg, TLattice lattice)
