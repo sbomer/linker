@@ -35,5 +35,7 @@ namespace ILLink.Shared.TypeSystemProxy
 		internal partial bool ReturnsVoid () => Method.ReturnType.MetadataType == MetadataType.Void;
 
 		public override string ToString () => Method.ToString ();
+
+		public bool Equals (MethodProxy other) => Method.Equals (other.Method);
 	}
 }

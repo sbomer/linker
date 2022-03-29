@@ -3,13 +3,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using ILLink.Shared;
 using ILLink.Shared.DataFlow;
 using ILLink.Shared.TrimAnalysis;
 using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
+using Mono.Linker.Steps;
+
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace Mono.Linker.Dataflow
@@ -48,11 +52,79 @@ namespace Mono.Linker.Dataflow
 	abstract partial class MethodBodyScanner
 	{
 		protected readonly LinkContext _context;
+		protected readonly MarkScopeStack _scopeStack;
+
 		protected static ValueSetLattice<SingleValue> MultiValueLattice => default;
 
-		protected MethodBodyScanner (LinkContext context)
+
+		public readonly record struct LocalKey(FieldDefinition Field) : IEquatable<LocalKey> {
+			public bool Equals (LocalKey other) => Field.Equals (other.Field);
+		}
+
+		// TODO: move this elsewhere.
+		// Share it? Partial class?
+		// Don't abstract out TValue because this class already assumes MultiValue.
+		public struct LocalState : IEquatable<LocalState>
+		{
+			public DefaultValueDictionary<LocalKey, MultiValue> HoistedLocals;
+
+			// TODO: is this right? should it copy?
+			public LocalState (DefaultValueDictionary<LocalKey, MultiValue> hoistedLocals) => HoistedLocals = hoistedLocals;
+
+			public bool Equals (LocalState other) => HoistedLocals.Equals(other.HoistedLocals);
+		}
+
+		public struct LocalStateLattice : ILattice<LocalState>
+		{
+			public readonly DictionaryLattice<LocalKey, MultiValue, ValueSetLattice<SingleValue>> Lattice;
+
+			public LocalStateLattice (ValueSetLattice<SingleValue> valueLattice) {
+				Lattice = new DictionaryLattice<LocalKey, MultiValue, ValueSetLattice<SingleValue>> (valueLattice);
+				Top = new (Lattice.Top);
+			}
+
+			public LocalState Top { get; }
+
+			public LocalState Meet (LocalState left, LocalState right) => new (Lattice.Meet (left.HoistedLocals, right.HoistedLocals));
+		}
+
+		public record struct MethodKey(MethodDefinition Method);
+		//  IEquatable<MethodKey>
+		// {
+			// public readonly MethodDefinition Method;
+// 
+			// public MethodKey (MethodDefinition method) => Method = method;
+// 
+			// public bool Equals (MethodKey other) => Method.Equals(other.Method);
+		// }
+
+		// public struct LocalDataFlowState : IDataFlowState<LocalState, LocalStateLattice>
+		// {
+		// 	LocalState current;
+		// 	public LocalState Current {
+		// 		get => current;
+		// 		set => current = value
+		// 	}
+
+		// 	public LocalStateLattice Lattice { get; init; }
+
+		// 	public Box<LocalState>? Exception { get; set; }
+
+		// 	public void Set (LocalKey key, MultiValue value)
+		// 	{
+		// 		current.Set (key, value);
+		// 		if (Exception != null)
+		// 			Exception.Value = Lattice.Meet (Exception.Value, current);
+		// 	}
+		// }
+
+		// protected LocalDataFlowState State;
+		protected LocalState State;
+
+		protected MethodBodyScanner (LinkContext context, MarkScopeStack scopeStack)
 		{
 			this._context = context;
+			_scopeStack = scopeStack;
 		}
 
 		internal MultiValue ReturnValue { private set; get; }
@@ -116,6 +188,7 @@ namespace Mono.Linker.Dataflow
 					b.Push (new StackSlot ());
 			}
 
+			// TODO: DataFlowState tracked hoisted locals must participate in merging.
 			Stack<StackSlot> newStack = new Stack<StackSlot> (a.Count);
 			IEnumerator<StackSlot> aEnum = a.GetEnumerator ();
 			IEnumerator<StackSlot> bEnum = b.GetEnumerator ();
@@ -207,7 +280,24 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		public void Scan (MethodBody methodBody)
+		// TODO: avoid new ()?
+		Queue<MethodBody> toScan = new ();
+
+		public void InterproceduralScan (MethodBody methodBody, InterproceduralState<LocalState, LocalStateLattice, MethodKey> interproceduralState)
+		{
+			toScan.Clear ();
+			// Don't enqueue it, because its scope is already on the stack.
+			Scan (methodBody, interproceduralState);
+			while (toScan.Count > 0) {
+				var methodBodyToScan = toScan.Dequeue ();
+				// We can fake the scopestack here, no need to actually
+				// represent the context. Just the last thing matters.
+				using var methodScope = _scopeStack.PushScope (new MessageOrigin (methodBodyToScan.Method));
+				Scan (methodBodyToScan, interproceduralState);
+			}
+		}
+
+		public virtual void Scan (MethodBody methodBody, InterproceduralState<LocalState, LocalStateLattice, MethodKey> interproceduralState)
 		{
 			MethodDefinition thisMethod = methodBody.Method;
 
@@ -215,6 +305,12 @@ namespace Mono.Linker.Dataflow
 
 			Dictionary<int, Stack<StackSlot>> knownStacks = new Dictionary<int, Stack<StackSlot>> ();
 			Stack<StackSlot>? currentStack = new Stack<StackSlot> (methodBody.MaxStackSize);
+			// TODO: avoid storing this on the scanner, make it a local instead.
+			// TODO: don't do it unless this is a state machine method.
+
+			// State = new LocalState ();
+			State = interproceduralState.MethodEntry.Get (new MethodKey(methodBody.Method));
+			// HoistedLocals = new Dictionary<FieldDefinition, MultiValue> ();
 
 			ScanExceptionInformation (knownStacks, methodBody);
 
@@ -315,12 +411,26 @@ namespace Mono.Linker.Dataflow
 					break;
 
 				case Code.Arglist:
-				case Code.Ldftn:
 				case Code.Sizeof:
 				case Code.Ldc_I8:
 				case Code.Ldc_R4:
 				case Code.Ldc_R8:
 					PushUnknown (currentStack);
+					break;
+
+				case Code.Ldftn: {
+						MethodReference value = (MethodReference) operation.Operand;
+						// TODO: resolve here or elsewhere?
+						var methodDefinition = _context.TryResolve (value);
+						if (methodDefinition != null && CompilerGeneratedCode.IsLocalFunction (methodDefinition)) {
+							var state = State;
+							interproceduralState.ProcessCall (new MethodKey(methodDefinition), ref state);
+							state = default (LocalState); // TODO: use lattice?
+							if (methodDefinition.Body is MethodBody body)
+								toScan.Enqueue (body);
+						}
+						PushUnknown (currentStack);
+					}
 					break;
 
 				case Code.Ldarg:
@@ -545,7 +655,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Call:
 				case Code.Callvirt:
 				case Code.Newobj:
-					HandleCall (methodBody, operation, currentStack, curBasicBlock);
+					HandleCall (methodBody, operation, currentStack, curBasicBlock, interproceduralState);
 					break;
 
 				case Code.Jmp:
@@ -794,6 +904,13 @@ namespace Mono.Linker.Dataflow
 
 		}
 
+		// private MultiValue GetPossiblyHoistedFieldValue (FieldDefinition field) {
+		// 	if (!CompilerGeneratedState.IsHoistedLocal (field))
+		// 		return GetFieldValue (field);
+		// 	// get hoisted local value from the store.
+		// 	return HoistedLocals[field];
+		// }
+
 		protected abstract MultiValue GetFieldValue (FieldDefinition field);
 
 		private void ScanLdfld (
@@ -809,8 +926,14 @@ namespace Mono.Linker.Dataflow
 
 			FieldDefinition? field = _context.TryResolve ((FieldReference) operation.Operand);
 			if (field != null) {
-				StackSlot slot = new StackSlot (GetFieldValue (field), isByRef);
-				currentStack.Push (slot);
+				MultiValue fieldValue;
+				if (!CompilerGeneratedState.IsHoistedLocal (field)) {
+					fieldValue = GetFieldValue (field);
+				} else {
+					// fieldValue = State.HoistedLocals.TryGetValue (field, out MultiValue value) ? value : MultiValueLattice.Top;
+					fieldValue = State.HoistedLocals.Get (new (field));
+				}
+				currentStack.Push (new StackSlot (fieldValue, isByRef));
 				return;
 			}
 
@@ -837,13 +960,37 @@ namespace Mono.Linker.Dataflow
 
 			FieldDefinition? field = _context.TryResolve ((FieldReference) operation.Operand);
 			if (field != null) {
-				foreach (var value in GetFieldValue (field)) {
-					// GetFieldValue may return different node types, in which case they can't be stored to.
-					// At least not yet.
-					if (value is not FieldValue fieldValue)
-						continue;
+				if (!CompilerGeneratedState.IsHoistedLocal (field)) {
+					foreach (var value in GetFieldValue (field)) {
+						// GetFieldValue may return different node types, in which case they can't be stored to.
+						// At least not yet.
+						if (value is not FieldValue fieldValue)
+							continue;
 
-					HandleStoreField (thisMethod, fieldValue, operation, valueToStoreSlot.Value);
+						HandleStoreField (thisMethod, fieldValue, operation, valueToStoreSlot.Value);
+					}
+				} else {
+					// hoisted local, just assign and overwrite.
+					// HoistedLocals[field] = valueToStoreSlot.Value;
+
+					// Except: don't overwrite parameters. Those never change.
+					// Detect whether the hoisted local was a method parameter.
+					bool isHoistedParameter = CompilerGeneratedCode.IsHoistedParameter (field);
+					if (isHoistedParameter) {
+						// Only the first assignment should take effect.
+						var existingValue = State.HoistedLocals.Get (new (field));
+						if (!existingValue.Equals(MultiValueLattice.Top)) {
+							// if it has already been assigned from the parameter, no more changes.
+							// Assert it's a parametervalue?
+							// Debug.Assert (existingValue.Count == 1);
+							Debug.Assert (existingValue.Single() is MethodParameterValue);
+						} else {
+							// not assigned yet, we're good.
+							State.HoistedLocals.Set (new (field), valueToStoreSlot.Value);
+						}
+					} else {
+						State.HoistedLocals.Set (new (field), valueToStoreSlot.Value);
+					}
 				}
 			}
 		}
@@ -891,7 +1038,8 @@ namespace Mono.Linker.Dataflow
 			MethodBody callingMethodBody,
 			Instruction operation,
 			Stack<StackSlot> currentStack,
-			int curBasicBlock)
+			int curBasicBlock,
+			InterproceduralState<LocalState, LocalStateLattice, MethodKey> interproceduralState)
 		{
 			MethodReference calledMethod = (MethodReference) operation.Operand;
 
@@ -901,13 +1049,30 @@ namespace Mono.Linker.Dataflow
 			ValueNodeList methodParams = PopCallArguments (currentStack, calledMethod, callingMethodBody, isNewObj,
 														   operation.Offset, out newObjValue);
 
+			// TODO: we resolve the method here and also in the reflection scanner...
+			var calledMethodDefinition = _context.TryResolve (calledMethod);
+			if (calledMethodDefinition != null && CompilerGeneratedCode.IsLocalFunction (new (calledMethodDefinition))) {
+				// Track flow into the local function from captured variables.
+				// Ignore flow out for now.
+				// TODO: fold IsLocalFunction into InterproceduralState?
+				// Maybe not...
+				var state = State;
+				interproceduralState.ProcessCall (new MethodKey(calledMethodDefinition), ref state);
+				// clear the current state
+				state = default (LocalState); // TODO: use lattice?
+				if (calledMethodDefinition.Body is MethodBody body)
+					toScan.Enqueue (body);
+			}
+
 			MultiValue methodReturnValue;
 			bool handledFunction = HandleCall (
 				callingMethodBody,
 				calledMethod,
 				operation,
 				methodParams,
-				out methodReturnValue);
+				out methodReturnValue,
+				interproceduralState
+				);
 
 			// Handle the return value or newobj result
 			if (!handledFunction) {
@@ -961,7 +1126,8 @@ namespace Mono.Linker.Dataflow
 			MethodReference calledMethod,
 			Instruction operation,
 			ValueNodeList methodParams,
-			out MultiValue methodReturnValue);
+			out MultiValue methodReturnValue,
+			InterproceduralState<LocalState, LocalStateLattice, MethodKey> interproceduralState);
 
 		// Limit tracking array values to 32 values for performance reasons. There are many arrays much longer than 32 elements in .NET, but the interesting ones for the linker are nearly always less than 32 elements.
 		private const int MaxTrackedArrayValues = 32;

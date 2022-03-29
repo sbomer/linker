@@ -1,9 +1,11 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+
 namespace ILLink.Shared.TypeSystemProxy
 {
-	internal readonly partial struct MethodProxy : IMemberProxy
+	internal readonly partial struct MethodProxy : IMemberProxy, IEquatable<MethodProxy>
 	{
 		// Currently this only needs to work on non-nested, non-generic types.
 		// The format of the fullTypeName parameter is 'namespace.typename', so for example 'System.Reflection.Assembly'

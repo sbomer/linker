@@ -24,7 +24,6 @@ namespace Mono.Linker.Dataflow
 	class ReflectionMethodBodyScanner : MethodBodyScanner
 	{
 		readonly MarkStep _markStep;
-		readonly MarkScopeStack _scopeStack;
 
 		public static bool RequiresReflectionMethodBodyScannerForCallSite (LinkContext context, MethodReference calledMethod)
 		{
@@ -40,6 +39,7 @@ namespace Mono.Linker.Dataflow
 
 		public static bool RequiresReflectionMethodBodyScannerForMethodBody (LinkContext context, MethodDefinition methodDefinition)
 		{
+			return true; // this one is relevant. other one not sure.
 			return Intrinsics.GetIntrinsicIdForMethod (methodDefinition) > IntrinsicId.RequiresReflectionBodyScanner_Sentinel ||
 				context.Annotations.FlowAnnotations.RequiresDataFlowAnalysis (methodDefinition);
 		}
@@ -62,15 +62,25 @@ namespace Mono.Linker.Dataflow
 		}
 
 		public ReflectionMethodBodyScanner (LinkContext context, MarkStep parent, MarkScopeStack scopeStack)
-			: base (context)
+			: base (context, scopeStack)
 		{
 			_markStep = parent;
-			_scopeStack = scopeStack;
 		}
 
-		public void ScanAndProcessReturnValue (MethodBody methodBody)
+		public void ScanAndProcessWithCompilerGeneratedCode (MethodBody methodBody)
 		{
-			Scan (methodBody);
+			var lattice = new LocalStateLattice (default (ValueSetLattice<SingleValue>));
+			var interproceduralState = new InterproceduralState<LocalState, LocalStateLattice, MethodKey> (lattice);
+			InterproceduralScan (methodBody, interproceduralState);
+		}
+
+		public override void Scan (MethodBody methodBody,
+			InterproceduralState<LocalState, LocalStateLattice, MethodKey> interproceduralState)
+		{
+			if (!_context.Annotations.Scanned.Add (methodBody.Method))
+				return;
+
+			base.Scan (methodBody, interproceduralState);
 
 			if (GetReturnTypeWithoutModifiers (methodBody.Method.ReturnType).MetadataType != MetadataType.Void) {
 				var method = methodBody.Method;
@@ -245,7 +255,11 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		public override bool HandleCall (MethodBody callingMethodBody, MethodReference calledMethod, Instruction operation, ValueNodeList methodParams, out MultiValue methodReturnValue)
+
+		public override bool HandleCall (MethodBody callingMethodBody, MethodReference calledMethod, Instruction operation, ValueNodeList methodParams, out MultiValue methodReturnValue,
+			InterproceduralState<LocalState, LocalStateLattice, MethodKey> interproceduralState
+//			DataFlowContext<LocalState<TValue>, LocalDataFlowState<TValue, TValueLattice>, LocalStateLattice<TValue, TValueLattice>, MethodKey> context
+		)
 		{
 			methodReturnValue = new ();
 			MultiValue? maybeMethodReturnValue = null;
@@ -267,6 +281,8 @@ namespace Mono.Linker.Dataflow
 
 			DynamicallyAccessedMemberTypes returnValueDynamicallyAccessedMemberTypes = 0;
 
+			// requiresDataFlowAnalysis is true if it has annotations.
+			// doesn't account for flow inside the function.
 			bool requiresDataFlowAnalysis = _context.Annotations.FlowAnnotations.RequiresDataFlowAnalysis (calledMethodDefinition);
 			returnValueDynamicallyAccessedMemberTypes = requiresDataFlowAnalysis ?
 				_context.Annotations.FlowAnnotations.GetReturnParameterAnnotation (calledMethodDefinition) : 0;

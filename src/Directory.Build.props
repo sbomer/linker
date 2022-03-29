@@ -3,6 +3,8 @@
 
   <PropertyGroup>
     <RunAnalyzers>true</RunAnalyzers>
+    <!-- <EnforceCodeStyleDuringBuild>true</EnforceCodeStyleDuringBuild> -->
+    <!-- <AnalysisLevel>latest-Recommended</AnalysisLevel> -->
     <TargetFramework>net6.0</TargetFramework>
     <Nullable>enable</Nullable>
   </PropertyGroup>

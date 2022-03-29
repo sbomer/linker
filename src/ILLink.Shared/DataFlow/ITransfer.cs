@@ -5,6 +5,24 @@ using System;
 
 namespace ILLink.Shared.DataFlow
 {
+	public readonly struct DataFlowContext<TValue, TState, TValueLattice, TMethod>
+		where TValue : struct, IEquatable<TValue>
+		where TState : class, IDataFlowState<TValue, TValueLattice>
+		where TValueLattice : ILattice<TValue>
+		where TMethod : IEquatable<TMethod>
+	{
+		public DataFlowContext (TState state, InterproceduralState<TValue, TValueLattice, TMethod> interproceduralState)
+			=> (State, InterproceduralState) = (state, interproceduralState);
+
+		public readonly TState State;
+		// TODO: combine interproceduralstate with IDataFlowState? Maybe!
+		public readonly InterproceduralState<TValue, TValueLattice, TMethod> InterproceduralState;
+	}
+
+	// public readonly struct DataFlowContext<TValue, TValueLattice, TMethod>
+	// 	where bb
+	// }
+
 	// ITransfer represents the transfer functions for a dataflow analysis.
 	// The transfer functions compute the effects of an operation on the set of facts
 	// tracked by a dataflow analysis. This simulates the execution of the operation
@@ -20,16 +38,17 @@ namespace ILLink.Shared.DataFlow
 
 	// TLattice isn't typically used in the implementation except to provide the "Top" value.
 	// This expresses the conceptual constraint that the transferred values are part of a lattice.
-	public interface ITransfer<TOperation, TValue, TState, TLattice>
+	public interface ITransfer<TOperation, TValue, TState, TLattice, TMethod>
 		where TValue : struct, IEquatable<TValue>
 		where TState : class, IDataFlowState<TValue, TLattice>
 		where TLattice : ILattice<TValue>
+		where TMethod : IEquatable<TMethod>
 	{
 		// Transfer should mutate the input value to reflect the effect of
 		// computing this operation. When using value types, ensure that
 		// any modifications to the values are observable by the caller (consider
 		// using readonly structs to prevent the implementation from making changes
 		// that won't be reflected in the caller).
-		void Transfer (TOperation operation, TState state);
+		void Transfer (TOperation block, DataFlowContext<TValue, TState, TLattice, TMethod> context);
 	}
 }
