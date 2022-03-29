@@ -10,13 +10,15 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.FlowAnalysis;
 
+using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
+
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
 	public class TrimDataFlowAnalysis
 		: ForwardDataFlowAnalysis<
-			LocalState<ValueSet<SingleValue>>,
-			LocalDataFlowState<ValueSet<SingleValue>, ValueSetLattice<SingleValue>>,
-			LocalStateLattice<ValueSet<SingleValue>, ValueSetLattice<SingleValue>>,
+			LocalState<MultiValue>,
+			LocalDataFlowState<MultiValue, ValueSetLattice<SingleValue>>,
+			LocalStateLattice<MultiValue, ValueSetLattice<SingleValue>>,
 			BlockProxy,
 			RegionProxy,
 			ControlFlowGraphProxy,
@@ -25,7 +27,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 	{
 		readonly ControlFlowGraphProxy ControlFlowGraph;
 
-		readonly LocalStateLattice<ValueSet<SingleValue>, ValueSetLattice<SingleValue>> Lattice;
+		readonly LocalStateLattice<MultiValue, ValueSetLattice<SingleValue>> Lattice;
 
 		readonly OperationBlockAnalysisContext Context;
 
@@ -108,9 +110,9 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		}
 
 		public override void TraceBlockInput (
-			LocalState<ValueSet<SingleValue>> normalState,
-			LocalState<ValueSet<SingleValue>>? exceptionState,
-			LocalState<ValueSet<SingleValue>>? exceptionFinallyState
+			LocalState<MultiValue> normalState,
+			LocalState<MultiValue>? exceptionState,
+			LocalState<MultiValue>? exceptionFinallyState
 		)
 		{
 			if (trace && showStates) {
@@ -125,9 +127,9 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		}
 
 		public override void TraceBlockOutput (
-			LocalState<ValueSet<SingleValue>> normalState,
-			LocalState<ValueSet<SingleValue>>? exceptionState,
-			LocalState<ValueSet<SingleValue>>? exceptionFinallyState
+			LocalState<MultiValue> normalState,
+			LocalState<MultiValue>? exceptionState,
+			LocalState<MultiValue>? exceptionFinallyState
 		)
 		{
 			if (trace && showStates) {
