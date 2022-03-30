@@ -207,7 +207,7 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		public void Scan (MethodBody methodBody)
+		public virtual void Scan (MethodBody methodBody)
 		{
 			MethodDefinition thisMethod = methodBody.Method;
 

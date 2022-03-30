@@ -3514,7 +3514,7 @@ namespace Mono.Linker.Steps
 		{
 			if (requiresReflectionMethodBodyScanner) {
 				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
-				scanner.ScanAndProcessReturnValue (body);
+				scanner.Scan (body);
 			}
 		}
 

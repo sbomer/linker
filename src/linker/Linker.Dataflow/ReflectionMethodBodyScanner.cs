@@ -68,9 +68,9 @@ namespace Mono.Linker.Dataflow
 			_scopeStack = scopeStack;
 		}
 
-		public void ScanAndProcessReturnValue (MethodBody methodBody)
+		public override void Scan (MethodBody methodBody)
 		{
-			Scan (methodBody);
+			base.Scan (methodBody);
 
 			if (GetReturnTypeWithoutModifiers (methodBody.Method.ReturnType).MetadataType != MetadataType.Void) {
 				var method = methodBody.Method;
