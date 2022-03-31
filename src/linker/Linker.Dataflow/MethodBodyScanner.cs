@@ -10,6 +10,8 @@ using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
+using Mono.Linker.Steps;
+using Mono.Linker.Dataflow;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace Mono.Linker.Dataflow
@@ -48,11 +50,13 @@ namespace Mono.Linker.Dataflow
 	abstract partial class MethodBodyScanner
 	{
 		protected readonly LinkContext _context;
+		protected readonly MarkScopeStack _scopeStack;
 		protected static ValueSetLattice<SingleValue> MultiValueLattice => default;
 
-		protected MethodBodyScanner (LinkContext context)
+		protected MethodBodyScanner (LinkContext context, MarkScopeStack scopeStack)
 		{
-			this._context = context;
+			_context = context;
+			_scopeStack = scopeStack;
 		}
 
 		internal MultiValue ReturnValue { private set; get; }
@@ -207,7 +211,10 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		public virtual void Scan (MethodBody methodBody)
+		public virtual void Scan (
+			MethodBody methodBody,
+			TrimDataFlowAnalysis.DataFlowState dataflowState
+		)
 		{
 			MethodDefinition thisMethod = methodBody.Method;
 
@@ -315,11 +322,15 @@ namespace Mono.Linker.Dataflow
 					break;
 
 				case Code.Arglist:
-				case Code.Ldftn:
 				case Code.Sizeof:
 				case Code.Ldc_I8:
 				case Code.Ldc_R4:
 				case Code.Ldc_R8:
+					PushUnknown (currentStack);
+					break;
+
+				case Code.Ldftn:
+					TrackNestedFunctionReference (dataflowState, (MethodReference) operation.Operand);
 					PushUnknown (currentStack);
 					break;
 
@@ -545,7 +556,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Call:
 				case Code.Callvirt:
 				case Code.Newobj:
-					HandleCall (methodBody, operation, currentStack, curBasicBlock);
+					HandleCall (methodBody, operation, currentStack, curBasicBlock, dataflowState);
 					break;
 
 				case Code.Jmp:
@@ -887,11 +898,24 @@ namespace Mono.Linker.Dataflow
 			return methodParams;
 		}
 
+		void TrackNestedFunctionReference (TrimDataFlowAnalysis.DataFlowState dataflowState, MethodReference referencedMethod)
+		{
+			var method = _context.TryResolve (referencedMethod);
+			if (method != null && CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name)) {
+				var reachableMethods = new HashSet<MethodDefinition> (dataflowState.NestedFunctions);
+				reachableMethods.Add (method);
+				// Work around the fact that we can't mutate the ValueSet in-place because it is a readonly
+				// struct. Maybe we should reconsider making it readonly.
+				dataflowState.NestedFunctions = new ValueSet<MethodDefinition> (reachableMethods);
+			}
+		}
+
 		private void HandleCall (
 			MethodBody callingMethodBody,
 			Instruction operation,
 			Stack<StackSlot> currentStack,
-			int curBasicBlock)
+			int curBasicBlock,
+			TrimDataFlowAnalysis.DataFlowState dataflowState)
 		{
 			MethodReference calledMethod = (MethodReference) operation.Operand;
 
@@ -900,6 +924,8 @@ namespace Mono.Linker.Dataflow
 			SingleValue? newObjValue;
 			ValueNodeList methodParams = PopCallArguments (currentStack, calledMethod, callingMethodBody, isNewObj,
 														   operation.Offset, out newObjValue);
+
+			TrackNestedFunctionReference (dataflowState, calledMethod);
 
 			MultiValue methodReturnValue;
 			bool handledFunction = HandleCall (

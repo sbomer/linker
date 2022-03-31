@@ -134,6 +134,23 @@ namespace ILLink.Shared.DataFlow
 
 		IEnumerator IEnumerable.GetEnumerator () => GetEnumerator ();
 
+		// public bool Add (TValue value)
+		// {
+		// 	if (_values is null) {
+		// 		_values = value;
+		// 		return true;
+		// 	}
+
+		// 	if (_values is not EnumerableValues valuesSet) {
+		// 		var values = new EnumerableValues (this);
+		// 		var result = values.Add (value);
+		// 		_values = values;
+		// 		return result;
+		// 	}
+			
+		// 	return valuesSet.Add (value);
+		// }
+
 		public bool Contains (TValue value) => _values is null
 			? false
 			: _values is EnumerableValues valuesSet

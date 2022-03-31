@@ -3509,12 +3509,13 @@ namespace Mono.Linker.Steps
 
 		//
 		// Tries to mark additional dependencies used in reflection like calls (e.g. typeof (MyClass).GetField ("fname"))
-		//
+		// Scans the method as well as any nested functions (local functions or lambdas) reachable from it.
 		protected virtual void MarkReflectionLikeDependencies (MethodBody body, bool requiresReflectionMethodBodyScanner)
 		{
 			if (requiresReflectionMethodBodyScanner) {
 				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
-				scanner.Scan (body);
+				var analysis = new TrimDataFlowAnalysis (scanner);
+				analysis.InterproceduralScan (body);
 			}
 		}
 

@@ -14,6 +14,7 @@ using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Linker.Steps;
+using Mono.Linker.Dataflow;
 
 using BindingFlags = System.Reflection.BindingFlags;
 
@@ -24,7 +25,6 @@ namespace Mono.Linker.Dataflow
 	class ReflectionMethodBodyScanner : MethodBodyScanner
 	{
 		readonly MarkStep _markStep;
-		readonly MarkScopeStack _scopeStack;
 
 		public static bool RequiresReflectionMethodBodyScannerForCallSite (LinkContext context, MethodReference calledMethod)
 		{
@@ -61,16 +61,16 @@ namespace Mono.Linker.Dataflow
 			return true;
 		}
 
-		public ReflectionMethodBodyScanner (LinkContext context, MarkStep parent, MarkScopeStack scopeStack)
-			: base (context)
+		public ReflectionMethodBodyScanner (LinkContext context, MarkStep markStep, MarkScopeStack scopeStack)
+			: base (context, scopeStack)
 		{
-			_markStep = parent;
-			_scopeStack = scopeStack;
+			_markStep = markStep;
 		}
 
-		public override void Scan (MethodBody methodBody)
+		public override void Scan (
+			MethodBody methodBody,
+			TrimDataFlowAnalysis.DataFlowState dataflowState)
 		{
-			base.Scan (methodBody);
 
 			if (GetReturnTypeWithoutModifiers (methodBody.Method.ReturnType).MetadataType != MetadataType.Void) {
 				var method = methodBody.Method;
