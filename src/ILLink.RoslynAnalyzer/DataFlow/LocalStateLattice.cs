@@ -35,6 +35,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 	{
 		public DefaultValueDictionary<LocalKey, TValue> Dictionary;
 
+		// TODO: is this right? should it copy?
 		public LocalState (DefaultValueDictionary<LocalKey, TValue> dictionary) => Dictionary = dictionary;
 
 		public bool Equals (LocalState<TValue> other) => Dictionary.Equals (other.Dictionary);

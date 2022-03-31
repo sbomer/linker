@@ -1,0 +1,1 @@
+Measure-Command { dotnet build --no-restore } | Select-Object -ExpandProperty TotalSeconds

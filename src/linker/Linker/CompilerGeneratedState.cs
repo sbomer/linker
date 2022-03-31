@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -136,6 +137,38 @@ namespace Mono.Linker
 			}
 		}
 
+		static bool TryGetUserMethodForStateMachine (TypeDefinition stateMachineType, out MethodDefinition? userMethod)
+		{
+			userMethod = null;
+
+			if (stateMachineType.DeclaringType is not TypeDefinition declaringType)
+				return false;
+
+			foreach (MethodDefinition method in declaringType.Methods) {
+				if (!method.HasCustomAttributes)
+					continue;
+				foreach (var attribute in method.CustomAttributes) {
+					if (attribute.AttributeType.Namespace != "System.Runtime.CompilerServices")
+						continue;
+					switch (attribute.AttributeType.Name) {
+					case "AsyncIteratorStateMachineAttribute":
+					case "AsyncStateMachineAttribute":
+					case "IteratorStateMachineAttribute":
+						if (!attribute.HasConstructorArguments)
+							continue;
+						if (attribute.ConstructorArguments[0].Value is not TypeDefinition associatedStateMachineType)
+							continue;
+						if (associatedStateMachineType != stateMachineType)
+							continue;
+						userMethod = method;
+						return true;
+					}
+				}
+			}
+
+			return false;
+		}
+
 		static TypeDefinition? GetFirstConstructorArgumentAsType (CustomAttribute attribute)
 		{
 			if (!attribute.HasConstructorArguments)
@@ -191,6 +224,56 @@ namespace Mono.Linker
 			if (_compilerGeneratedTypeToUserCodeMethod.TryGetValue (sourceType, out owningMethod))
 				return true;
 
+			return false;
+		}
+
+		static bool HasRoslynCompilerGeneratedName (FieldDefinition field) =>
+			field.Name.Contains ('<');
+
+		internal static bool IsHoistedLocal (FieldDefinition field)
+		{
+			// TODO: iterator state machine contains fields like state and current,
+			// which are not locals!
+			// those must be handled differently.
+
+			// Ignore those which have assignment from parameter.
+
+			return HasRoslynCompilerGeneratedName (field) || field.DeclaringType.Name.Contains("DisplayClass");
+		}
+
+		static bool IsCompilerGenerated (IMemberDefinition member)
+		{
+			if (HasCompilerGeneratedAttribute (member))
+				return true;
+
+			// Walk up declaring types.
+			
+			bool nestedType = member is TypeDefinition;
+			TypeDefinition declaringType = member.DeclaringType;
+			while (declaringType != null) {
+				if (HasCompilerGeneratedAttribute (declaringType)) {
+					// if (nestedType)
+						// throw new NotImplementedException ("Didn't know compiler-generated code can have nested classes!");
+
+					return true;
+				}
+				nestedType = true;
+				declaringType = declaringType.DeclaringType;
+			}
+
+			return false;
+
+		}
+
+		static bool HasCompilerGeneratedAttribute (ICustomAttributeProvider provider)
+		{
+			if (!provider.HasCustomAttributes)
+				return false;
+			foreach (var attribute in provider.CustomAttributes) {
+				var attributeType = attribute.AttributeType;
+				if (attributeType.Name == "CompilerGeneratedAttribute" && attributeType.Namespace == "System.Runtime.CompilerServices")
+					return true;
+			}
 			return false;
 		}
 	}

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace ILLink.Shared.DataFlow
@@ -9,15 +10,17 @@ namespace ILLink.Shared.DataFlow
 	// A generic implementation of a forward dataflow analysis. Forward means that it flows facts
 	// across code in the order of execution, starting from the beginning of a method,
 	// and merging values from predecessors.
-	public abstract class ForwardDataFlowAnalysis<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph, TTransfer>
+	internal abstract class ForwardDataFlowAnalysis<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph, TTransfer, TMethod>
 		where TValue : struct, IEquatable<TValue>
 		where TState : class, IDataFlowState<TValue, TLattice>, new()
 		where TLattice : ILattice<TValue>
-		where TTransfer : ITransfer<TBlock, TValue, TState, TLattice>
+		where TTransfer : ITransfer<TBlock, TValue, TState, TLattice, TMethod>
 		where TBlock : IEquatable<TBlock>
 		where TRegion : IRegion<TRegion>
 		where TControlFlowGraph : IControlFlowGraph<TBlock, TRegion>
+		where TMethod : IEquatable<TMethod>
 	{
+
 		[Conditional ("DEBUG")]
 		public virtual void TraceStart (TControlFlowGraph cfg) { }
 
@@ -30,21 +33,24 @@ namespace ILLink.Shared.DataFlow
 		[Conditional ("DEBUG")]
 		public virtual void TraceBlockOutput (TValue normalState, TValue? exceptionState, TValue? exceptionFinallyState) { }
 
+		protected abstract TControlFlowGraph GetControlFlowGraph (TMethod method);
+
 		// This just runs a dataflow algorithm until convergence. It doesn't cache any results,
 		// allowing each particular kind of analysis to decide what is worth saving.
-		public void Fixpoint (TControlFlowGraph cfg, TLattice lattice, TTransfer transfer)
+		public void InterproceduralFixpoint (TControlFlowGraph cfg, TLattice lattice, TTransfer transfer)
 		{
 			TraceStart (cfg);
 
-			// Initialize output of each block to the Top value of the lattice
 			var cfgState = new ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph> (cfg, lattice);
 
-			// For now, the actual dataflow algorithm is the simplest possible version.
-			// It is written to be obviously correct, but has not been optimized for performance
-			// at all. As written it will almost always perform unnecessary passes over the entire
-			// control flow graph. The core abstractions shouldn't need to change even when we write
-			// an optimized version of this algorithm - ideally any optimizations will be generic,
-			// not specific to a particular analysis.
+			var cfgStates = new Dictionary<TMethod, ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph>> ();
+			var interproceduralState = new InterproceduralState<TValue, TLattice, TMethod> (lattice);
+
+			// Initialize output of each block to the Top value of the lattice
+			// var cfgState = new ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph> (cfg, lattice);
+			// var context = new DataFlowContext<TValue, TState, TLattice, TMethod> () {
+// 
+			// }
 
 			// Allocate some objects which will be reused to hold the current dataflow state,
 			// to avoid allocations in the inner loop below.
@@ -59,25 +65,88 @@ namespace ILLink.Shared.DataFlow
 				Exception = null
 			};
 
+
+			while (true) {
+				var oldInterproceduralState = new InterproceduralState<TValue, TLattice, TMethod> (interproceduralState);
+
+				// state.Current = lattice.Top;
+				// state.Exception = null;
+				// finallyState.Current = lattice.Top;
+				// finallyState.Exception = null;
+
+				// Analyze everything once. Local functions and lambdas too.
+				Fixpoint (cfg, cfgState, lattice, transfer, interproceduralState, state, finallyState);
+				foreach (var method in interproceduralState.MethodsToAnalyze) {
+					var methodCfg = GetControlFlowGraph (method); // TODO: is this already cached by Roslyn?
+
+					// TODO: should this be part of the interprocedural state?
+					if (!cfgStates.TryGetValue (method, out var methodCfgState)) {
+						methodCfgState = new ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph> (methodCfg, lattice);
+						cfgStates.Add (method, methodCfgState);
+					}
+
+					methodCfgState.Get (methodCfg.Entry).Current = interproceduralState.MethodEntry.Get (method);
+
+					// state.Current = interproceduralState.MethodEntry.Get (method);
+					// state.Exception = null;
+					// finallyState.Current = lattice.Top;
+					// finallyState.Exception = null;
+					Fixpoint (methodCfg, methodCfgState, lattice, transfer, interproceduralState, state, finallyState);
+				}
+
+				// No new methods discovered, and no new method inputs discovered.
+				if (interproceduralState.Equals (oldInterproceduralState))
+					break;
+
+				// Interprocedural state changed, so need to re-analyze everything.
+				// Update the set of known methods in case there were any new ones.
+				// TODO: make this more efficient. Use a queue?
+			}
+		}
+
+		public virtual void HandleFixpoint (TControlFlowGraph cfg, InterproceduralState<TValue, TLattice, TMethod> interproceduralState)
+		{
+		}
+
+		public void Fixpoint (TControlFlowGraph cfg, ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph> cfgState,
+			TLattice lattice, TTransfer transfer, InterproceduralState<TValue, TLattice, TMethod> interproceduralState,
+			TState state, TState finallyState)
+		{
+			HandleFixpoint (cfg, interproceduralState);
+			// Dictionary<ControlFlowGraphState 
+
+			// For now, the actual dataflow algorithm is the simplest possible version.
+			// It is written to be obviously correct, but has not been optimized for performance
+			// at all. As written it will almost always perform unnecessary passes over the entire
+			// control flow graph. The core abstractions shouldn't need to change even when we write
+			// an optimized version of this algorithm - ideally any optimizations will be generic,
+			// not specific to a particular analysis.
+
+			// TODO: maybe combine state/finallyState into the cfgState?
+
+			// TODO: maybe pass interproceduralState as a DataFlowContext instead?
+
+			// TODO: fix up cfgState vs cfg usages.
 			bool anyBlockChanged = true;
 			while (anyBlockChanged) {
 				anyBlockChanged = false;
-				foreach (var block in cfg.Blocks) {
-					FlowAcrossBlock (lattice, transfer, block, cfgState, state, finallyState, out bool blockChanged);
+				foreach (var block in cfgState.cfg.Blocks) {
+					FlowAcrossBlock (lattice, transfer, block, cfgState, state, finallyState, out bool blockChanged, interproceduralState);
 					if (blockChanged)
 						anyBlockChanged = true;
 				}
 			}
 		}
 
+		// TODO: state and finallyState input values aren't used... make this more clear?
 		void FlowAcrossBlock (TLattice lattice, TTransfer transfer, TBlock block,
 			ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph> cfgState,
-			TState state, TState finallyState, out bool changed)
+			TState state, TState finallyState, out bool changed, InterproceduralState<TValue, TLattice, TMethod> interproceduralState)
 		{
 			changed = false;
 			TraceVisitBlock (block);
 
-			var cfg = cfgState.ControlFlowGraph;
+			var cfg = cfgState.cfg;
 			if (block.Equals (cfg.Entry))
 				return;
 
@@ -174,7 +243,7 @@ namespace ILLink.Shared.DataFlow
 			// the exception state to reflect every operation in the region.
 			TState currentBlockState = cfgState.Get (block);
 			Box<TValue>? exceptionState = currentBlockState.Exception;
-			TValue? oldExceptionState = exceptionState?.Value;
+			TValue? oldExceptionState = exceptionState?.Value; // TODO: should be a copy operation! :/
 			if (isTryStart || isCatchOrFilterStart) {
 				// Catch/filter regions get the initial state from the exception state of the corresponding try region.
 				// This is already accounted for in the non-exceptional control flow state of the catch block above,
@@ -196,7 +265,7 @@ namespace ILLink.Shared.DataFlow
 
 			state.Current = currentState;
 			state.Exception = exceptionState;
-			transfer.Transfer (block, state);
+			transfer.Transfer (block, new DataFlowContext<TValue, TState, TLattice, TMethod> (state, interproceduralState));
 
 			if (!changed && !cfgState.Get (block).Current.Equals (state.Current))
 				changed = true;
@@ -208,7 +277,7 @@ namespace ILLink.Shared.DataFlow
 				// Independently apply transfer functions for the exception finally state in finally regions.
 				finallyState.Current = exceptionFinallyState!.Value;
 				finallyState.Exception = exceptionState;
-				transfer.Transfer (block, finallyState);
+				transfer.Transfer (block, new DataFlowContext<TValue, TState, TLattice, TMethod> (finallyState, interproceduralState));
 
 				if (!changed && !oldFinallyState.Equals (finallyState.Current))
 					changed = true;

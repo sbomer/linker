@@ -52,6 +52,7 @@ namespace Mono.Linker
 		// once, and once "processed", an item never becomes "pending" again.
 		protected readonly Dictionary<IMetadataTokenProvider, MessageOrigin> marked_pending = new Dictionary<IMetadataTokenProvider, MessageOrigin> ();
 		protected readonly HashSet<IMetadataTokenProvider> processed = new HashSet<IMetadataTokenProvider> ();
+		public readonly HashSet<MethodDefinition> Scanned = new HashSet<MethodDefinition> ();
 		protected readonly Dictionary<TypeDefinition, (TypePreserve preserve, bool applied)> preserved_types = new Dictionary<TypeDefinition, (TypePreserve, bool)> ();
 		protected readonly HashSet<TypeDefinition> pending_preserve = new HashSet<TypeDefinition> ();
 		protected readonly Dictionary<TypeDefinition, TypePreserveMembers> preserved_type_members = new ();

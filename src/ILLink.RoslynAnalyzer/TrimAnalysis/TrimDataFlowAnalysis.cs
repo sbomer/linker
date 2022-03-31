@@ -14,8 +14,8 @@ using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.Single
 
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
-	public class TrimDataFlowAnalysis
-		: ForwardDataFlowAnalysis<
+	internal class TrimDataFlowAnalysis
+  		: ForwardDataFlowAnalysis<
 			LocalState<MultiValue>,
 			LocalDataFlowState<MultiValue, ValueSetLattice<SingleValue>>,
 			LocalStateLattice<MultiValue, ValueSetLattice<SingleValue>>,
@@ -38,10 +38,27 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			Context = context;
 		}
 
+		protected override ControlFlowGraphProxy GetControlFlowGraph (MethodKey method)
+		{
+			if (method.LocalFunction != null)
+				return new (ControlFlowGraph.ControlFlowGraph.GetLocalFunctionControlFlowGraph (method.LocalFunction));
+			if (method.Lambda != null)
+				return new (ControlFlowGraph.ControlFlowGraph.GetAnonymousFunctionControlFlowGraph (method.Lambda));
+			throw new InvalidOperationException ();
+		}
+
+		public override void HandleFixpoint (ControlFlowGraphProxy cfg, InterproceduralState<LocalState<MultiValue>, LocalStateLattice<MultiValue, ValueSetLattice<SingleValue>>, MethodKey> interproceduralState)
+		{
+			// This ensures that every declared local function gets analyzed, whether on not it is used.
+			// TODO: does it need to be cached?
+			foreach (var localFunction in cfg.ControlFlowGraph.LocalFunctions)
+				interproceduralState.MethodsToAnalyze.Add (new (localFunction));
+		}
+
 		public TrimAnalysisPatternStore ComputeTrimAnalysisPatterns ()
 		{
 			var visitor = new TrimAnalysisVisitor (Lattice, Context);
-			Fixpoint (ControlFlowGraph, Lattice, visitor);
+			InterproceduralFixpoint (ControlFlowGraph, Lattice, visitor);
 			return visitor.TrimAnalysisPatterns;
 		}
 

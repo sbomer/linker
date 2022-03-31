@@ -7,7 +7,7 @@ namespace ILLink.Shared.DataFlow
 {
 	// Data structure to store dataflow states for every basic block in the control flow graph,
 	// keeping the exception states shared across different basic blocks owned by the same try or catch region.
-	public struct ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph>
+	public class ControlFlowGraphState<TValue, TState, TLattice, TBlock, TRegion, TControlFlowGraph>
 		where TValue : struct, IEquatable<TValue>
 		where TState : class, IDataFlowState<TValue, TLattice>, new()
 		where TLattice : ILattice<TValue>
@@ -41,10 +41,8 @@ namespace ILLink.Shared.DataFlow
 		// states from all of these branches (which aren't represented explicitly in the CFG).
 		readonly Dictionary<TRegion, TValue> finallyInputState;
 
-		readonly TControlFlowGraph cfg;
-
-		public TControlFlowGraph ControlFlowGraph => cfg;
-
+		// TODO: is public field a good idea?
+		public readonly TControlFlowGraph cfg;
 		readonly TLattice lattice;
 
 		public ControlFlowGraphState (TControlFlowGraph cfg, TLattice lattice)
@@ -69,6 +67,7 @@ namespace ILLink.Shared.DataFlow
 			return state;
 		}
 
+		// Shouldn't be public... is an implementation detail of Get.
 		public bool TryGetExceptionState (TBlock block, out Box<TValue>? state)
 		{
 			state = null;

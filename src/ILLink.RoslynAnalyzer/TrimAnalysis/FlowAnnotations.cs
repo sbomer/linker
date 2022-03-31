@@ -11,6 +11,8 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 	{
 		public static bool RequiresDataFlowAnalysis (IMethodSymbol method)
 		{
+			return true;
+
 			if (method.GetDynamicallyAccessedMemberTypes () != DynamicallyAccessedMemberTypes.None)
 				return true;
 

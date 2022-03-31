@@ -42,5 +42,7 @@ namespace ILLink.Shared.TypeSystemProxy
 		}
 
 		public override string ToString () => Method.ToString ();
+
+		public bool Equals (MethodProxy other) => Method.Equals (other.Method);
 	}
 }

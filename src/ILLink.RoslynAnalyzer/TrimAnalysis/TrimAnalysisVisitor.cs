@@ -12,14 +12,21 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
-using StateValue = ILLink.RoslynAnalyzer.DataFlow.LocalDataFlowState<
-	ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>,
-	ILLink.Shared.DataFlow.ValueSetLattice<ILLink.Shared.DataFlow.SingleValue>
-	>;
+
+using LocalDataFlowContext = ILLink.Shared.DataFlow.DataFlowContext<
+	ILLink.RoslynAnalyzer.DataFlow.LocalState<
+		ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>>,
+	ILLink.RoslynAnalyzer.DataFlow.LocalDataFlowState<
+		ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>,
+		ILLink.Shared.DataFlow.ValueSetLattice<ILLink.Shared.DataFlow.SingleValue>>,
+	ILLink.RoslynAnalyzer.DataFlow.LocalStateLattice<
+		ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>,
+		ILLink.Shared.DataFlow.ValueSetLattice<ILLink.Shared.DataFlow.SingleValue>>,
+	ILLink.RoslynAnalyzer.DataFlow.MethodKey>;
 
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
-	public class TrimAnalysisVisitor : LocalDataFlowVisitor<MultiValue, ValueSetLattice<SingleValue>>
+	internal class TrimAnalysisVisitor : LocalDataFlowVisitor<MultiValue, ValueSetLattice<SingleValue>>
 	{
 		public readonly TrimAnalysisPatternStore TrimAnalysisPatterns;
 
@@ -45,9 +52,9 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		// - 'this' parameter (for annotated methods)
 		// - field reference
 
-		public override MultiValue Visit (IOperation? operation, StateValue argument)
+		public override MultiValue Visit (IOperation? operation, LocalDataFlowContext context)
 		{
-			var returnValue = base.Visit (operation, argument);
+			var returnValue = base.Visit (operation, context);
 
 			// If the return value is empty (TopValue basically) and the Operation tree
 			// reports it as having a constant value, use that as it will automatically cover
@@ -66,10 +73,9 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 
 			return returnValue;
 		}
-
-		public override MultiValue VisitArrayCreation (IArrayCreationOperation operation, StateValue state)
+		public override MultiValue VisitArrayCreation (IArrayCreationOperation operation, LocalDataFlowContext context)
 		{
-			var value = base.VisitArrayCreation (operation, state);
+			var value = base.VisitArrayCreation (operation, context);
 
 			// Don't track multi-dimensional arrays
 			if (operation.DimensionSizes.Length != 1)
@@ -79,8 +85,8 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			if (operation.Initializer?.ElementValues.Length >= MaxTrackedArrayValues)
 				return TopValue;
 
-			var arrayValue = ArrayValue.Create (Visit (operation.DimensionSizes[0], state));
-			var elements = operation.Initializer?.ElementValues.Select (val => Visit (val, state)).ToArray () ?? System.Array.Empty<MultiValue> ();
+			var arrayValue = ArrayValue.Create (Visit (operation.DimensionSizes[0], context));
+			var elements = operation.Initializer?.ElementValues.Select (val => Visit (val, context)).ToArray () ?? System.Array.Empty<MultiValue> ();
 			foreach (var array in arrayValue.Cast<ArrayValue> ()) {
 				for (int i = 0; i < elements.Length; i++) {
 					array.IndexValues.Add (i, elements[i]);
@@ -90,9 +96,9 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			return arrayValue;
 		}
 
-		public override MultiValue VisitConversion (IConversionOperation operation, StateValue state)
+		public override MultiValue VisitConversion (IConversionOperation operation, LocalDataFlowContext context)
 		{
-			var value = base.VisitConversion (operation, state);
+			var value = base.VisitConversion (operation, context);
 
 			if (operation.OperatorMethod != null)
 				return operation.OperatorMethod.ReturnType.IsTypeInterestingForDataflow () ? new MethodReturnValue (operation.OperatorMethod) : value;
@@ -103,12 +109,12 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			return value;
 		}
 
-		public override MultiValue VisitParameterReference (IParameterReferenceOperation paramRef, StateValue state)
+		public override MultiValue VisitParameterReference (IParameterReferenceOperation paramRef, LocalDataFlowContext context)
 		{
 			return paramRef.Parameter.Type.IsTypeInterestingForDataflow () ? new MethodParameterValue (paramRef.Parameter) : TopValue;
 		}
 
-		public override MultiValue VisitInstanceReference (IInstanceReferenceOperation instanceRef, StateValue state)
+		public override MultiValue VisitInstanceReference (IInstanceReferenceOperation instanceRef, LocalDataFlowContext context)
 		{
 			if (instanceRef.ReferenceKind != InstanceReferenceKind.ContainingTypeInstance)
 				return TopValue;
@@ -122,7 +128,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			return TopValue;
 		}
 
-		public override MultiValue VisitFieldReference (IFieldReferenceOperation fieldRef, StateValue state)
+		public override MultiValue VisitFieldReference (IFieldReferenceOperation fieldRef, LocalDataFlowContext context)
 		{
 			if (fieldRef.Field.Type.IsTypeInterestingForDataflow ()) {
 				var field = fieldRef.Field;
@@ -135,19 +141,19 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			return TopValue;
 		}
 
-		public override MultiValue VisitTypeOf (ITypeOfOperation typeOfOperation, StateValue state)
+		public override MultiValue VisitTypeOf (ITypeOfOperation typeOfOperation, LocalDataFlowContext context)
 		{
 			return SingleValueExtensions.FromTypeSymbol (typeOfOperation.TypeOperand) ?? TopValue;
 		}
 
-		public override MultiValue VisitBinaryOperator (IBinaryOperation operation, StateValue argument)
+		public override MultiValue VisitBinaryOperator (IBinaryOperation operation, LocalDataFlowContext context)
 		{
 			if (!operation.ConstantValue.HasValue && // Optimization - if there is already a constant value available, rely on the Visit(IOperation) instead
 				operation.OperatorKind == BinaryOperatorKind.Or &&
 				operation.OperatorMethod is null &&
 				(operation.Type?.TypeKind == TypeKind.Enum || operation.Type?.SpecialType == SpecialType.System_Int32)) {
-				MultiValue leftValue = Visit (operation.LeftOperand, argument);
-				MultiValue rightValue = Visit (operation.RightOperand, argument);
+				MultiValue leftValue = Visit (operation.LeftOperand, context);
+				MultiValue rightValue = Visit (operation.RightOperand, context);
 
 				MultiValue result = TopValue;
 				foreach (var left in leftValue) {
@@ -167,7 +173,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 				return result;
 			}
 
-			return base.VisitBinaryOperator (operation, argument);
+			return base.VisitBinaryOperator (operation, context);
 		}
 
 		// Override handlers for situations where annotated locations may be involved in reflection access:
