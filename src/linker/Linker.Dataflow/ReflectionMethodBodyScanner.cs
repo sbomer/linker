@@ -53,9 +53,9 @@ namespace Mono.Linker.Dataflow
 			return context.Annotations.FlowAnnotations.RequiresDataFlowAnalysis (fieldDefinition);
 		}
 
-		bool ShouldEnableReflectionPatternReporting ()
+		bool ShouldEnableReflectionPatternReporting (MessageOrigin origin)
 		{
-			if (_markStep.ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode ())
+			if (_markStep.ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (origin))
 				return false;
 
 			return true;
@@ -76,7 +76,8 @@ namespace Mono.Linker.Dataflow
 				var method = methodBody.Method;
 				var methodReturnValue = GetMethodReturnValue (method);
 				if (methodReturnValue.DynamicallyAccessedMemberTypes != 0) {
-					var analysisContext = new AnalysisContext (_scopeStack.CurrentScope.Origin, ShouldEnableReflectionPatternReporting (), _context);
+					var origin = _scopeStack.CurrentScope.Origin;
+					var analysisContext = new AnalysisContext (origin, ShouldEnableReflectionPatternReporting (origin), _context);
 					RequireDynamicallyAccessedMembers (analysisContext, ReturnValue, methodReturnValue);
 				}
 			}
@@ -136,7 +137,8 @@ namespace Mono.Linker.Dataflow
 			var genericParameterValue = new GenericParameterValue (genericParameter, annotation);
 			MultiValue genericArgumentValue = GetTypeValueNodeFromGenericArgument (genericArgument);
 
-			var analysisContext = new AnalysisContext (_scopeStack.CurrentScope.Origin, ShouldEnableReflectionPatternReporting (), _context);
+			var origin = _scopeStack.CurrentScope.Origin;
+			var analysisContext = new AnalysisContext (origin, ShouldEnableReflectionPatternReporting (origin), _context);
 			RequireDynamicallyAccessedMembers (analysisContext, genericArgumentValue, genericParameterValue);
 		}
 
@@ -231,7 +233,8 @@ namespace Mono.Linker.Dataflow
 		{
 			if (field.DynamicallyAccessedMemberTypes != 0) {
 				_scopeStack.UpdateCurrentScopeInstructionOffset (operation.Offset);
-				var analysisContext = new AnalysisContext (_scopeStack.CurrentScope.Origin, ShouldEnableReflectionPatternReporting (), _context);
+				var origin = _scopeStack.CurrentScope.Origin;
+				var analysisContext = new AnalysisContext (origin, ShouldEnableReflectionPatternReporting (origin), _context);
 				RequireDynamicallyAccessedMembers (analysisContext, valueToStore, field);
 			}
 		}
@@ -240,7 +243,8 @@ namespace Mono.Linker.Dataflow
 		{
 			if (parameter.DynamicallyAccessedMemberTypes != 0) {
 				_scopeStack.UpdateCurrentScopeInstructionOffset (operation.Offset);
-				var analysisContext = new AnalysisContext (_scopeStack.CurrentScope.Origin, ShouldEnableReflectionPatternReporting (), _context);
+				var origin = _scopeStack.CurrentScope.Origin;
+				var analysisContext = new AnalysisContext (_scopeStack.CurrentScope.Origin, ShouldEnableReflectionPatternReporting (origin), _context);
 				RequireDynamicallyAccessedMembers (analysisContext, valueToStore, parameter);
 			}
 		}
@@ -260,9 +264,10 @@ namespace Mono.Linker.Dataflow
 				return false;
 
 			_scopeStack.UpdateCurrentScopeInstructionOffset (operation.Offset);
+			var origin = _scopeStack.CurrentScope.Origin;
 			var analysisContext = new AnalysisContext (
-				_scopeStack.CurrentScope.Origin,
-				ShouldEnableReflectionPatternReporting (),
+				origin,
+				ShouldEnableReflectionPatternReporting (origin),
 				_context);
 
 			DynamicallyAccessedMemberTypes returnValueDynamicallyAccessedMemberTypes = 0;
