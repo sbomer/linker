@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.IO;
 using ILLink.RoslynAnalyzer.DataFlow;
 using ILLink.Shared.DataFlow;
 using Microsoft.CodeAnalysis;
@@ -34,11 +35,14 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			ControlFlowGraph = new ControlFlowGraphProxy (cfg);
 			Lattice = new (new ValueSetLattice<SingleValue> ());
 			Context = context;
+			writer = null;
 		}
 
-		public TrimAnalysisPatternStore ComputeTrimAnalysisPatterns ()
+		public TrimAnalysisPatternStore ComputeTrimAnalysisPatterns (StreamWriter writer)
 		{
 			var visitor = new TrimAnalysisVisitor (Lattice, Context);
+			this.writer = writer;
+			visitor.writer = writer;
 			Fixpoint (ControlFlowGraph, Lattice, visitor);
 			return visitor.TrimAnalysisPatterns;
 		}
@@ -51,9 +55,10 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		bool trace = false;
 
 		// Set this to true to print out the dataflow states encountered during the analysis.
-		readonly bool showStates = false;
+		readonly bool showStates = true;
 #pragma warning restore CA1805 // Do not initialize unnecessarily
 		ControlFlowGraphProxy cfg;
+		StreamWriter? writer;
 
 		public override void TraceStart (ControlFlowGraphProxy cfg)
 		{
@@ -71,39 +76,39 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 				break;
 			}
 
-			if (methodName?.Equals (traceMethod) == true)
+			if (methodName?.Equals (traceMethod) == true) {
 				trace = true;
+			}
 		}
+
+		public override void TraceFinish () {}//  => writer?.Dispose();
+
+		void TraceLine(string s = "") => writer?.WriteLine (s);
+
+		void Trace(string s) => writer?.Write (s);
 
 		public override void TraceVisitBlock (BlockProxy block)
 		{
 			if (!trace)
 				return;
 
-			Console.Write ("block " + block.Block.Ordinal + ": ");
-			if (block.Block.Operations.FirstOrDefault () is IOperation firstBlockOp) {
-				Console.WriteLine (firstBlockOp.Syntax.ToString ());
-			} else if (block.Block.BranchValue is IOperation branchOp) {
-				Console.WriteLine (branchOp.Syntax.ToString ());
-			} else {
-				Console.WriteLine ();
-			}
-			Console.Write ("predecessors: ");
+			Trace ("block " + block.Block.Ordinal + ": ");
+			Trace ("predecessors: ");
 			foreach (var predecessor in cfg.GetPredecessors (block)) {
 				var predProxy = predecessor.Block;
-				Console.Write (predProxy.Block.Ordinal + " ");
+				Trace (predProxy.Block.Ordinal + " ");
 			}
-			Console.WriteLine ();
+			TraceLine ();
 		}
 
-		static void WriteIndented (string? s, int level)
+		void WriteIndented (string? s, int level)
 		{
 			string[]? lines = s?.Trim ().Split (new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
 			if (lines == null)
 				return;
 			foreach (var line in lines) {
-				Console.Write (new String ('\t', level));
-				Console.WriteLine (line);
+				Trace (new String ('\t', level));
+				TraceLine (line);
 			}
 		}
 
@@ -122,6 +127,8 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 				WriteIndented ("finally exception state:", 1);
 				WriteIndented (exceptionFinallyState?.ToString (), 2);
 			}
+			if (trace)
+				WriteIndented ("--- operations ---", 1);
 		}
 
 		public override void TraceBlockOutput (
@@ -134,10 +141,14 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 				WriteIndented ("--- after transfer ---", 1);
 				WriteIndented ("normal state:", 1);
 				WriteIndented (normalState.ToString (), 2);
-				WriteIndented ("exception state:", 1);
-				WriteIndented (exceptionState?.ToString (), 2);
-				WriteIndented ("finally state:", 1);
-				WriteIndented (exceptionFinallyState?.ToString (), 2);
+				if (exceptionState != null) {
+					WriteIndented ("exception state:", 1);
+					WriteIndented (exceptionState.ToString (), 2);
+				}
+				if (exceptionFinallyState != null) {
+					WriteIndented ("finally state:", 1);
+					WriteIndented (exceptionFinallyState.ToString (), 2);
+				}
 			}
 		}
 #endif

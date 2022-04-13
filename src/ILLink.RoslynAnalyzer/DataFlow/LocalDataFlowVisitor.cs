@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.IO;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using ILLink.Shared.DataFlow;
@@ -32,6 +33,32 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 
 		public LocalDataFlowVisitor (LocalStateLattice<TValue, TValueLattice> lattice, OperationBlockAnalysisContext context) =>
 			(LocalStateLattice, Context) = (lattice, context);
+
+		public StreamWriter? writer;
+
+		void TraceLine(string s = "") => writer?.WriteLine (s);
+
+		void Trace(string s) => writer?.Write (s);
+
+		void TraceVisitOperation (IOperation? operation)
+		{
+			if (operation == null)
+				return;
+			int l = "Operation".Length;
+			var name = operation.GetType().Name.ToString();
+			Trace($"\t{name.Substring(0, name.Length - l),-24}");
+			TraceLine($"\t{operation.Syntax.ToString()}");
+			if (operation is IFlowCaptureOperation capture)
+				TraceLine ($"\t{capture.Id.GetHashCode()}");
+			if (operation is IFlowCaptureReferenceOperation captureReference)
+				TraceLine ($"\t{captureReference.Id.GetHashCode()}");
+		}
+
+		public override TValue Visit (IOperation? operation, LocalDataFlowState<TValue, TValueLattice> state)
+		{
+			TraceVisitOperation (operation);
+			return base.Visit (operation, state);
+		}
 
 		public void Transfer (BlockProxy block, LocalDataFlowState<TValue, TValueLattice> state)
 		{

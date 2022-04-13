@@ -3,6 +3,7 @@
 
 using System.Collections.Immutable;
 using System.Linq;
+using System.IO;
 using ILLink.RoslynAnalyzer.DataFlow;
 using ILLink.Shared.DataFlow;
 using ILLink.Shared.TrimAnalysis;

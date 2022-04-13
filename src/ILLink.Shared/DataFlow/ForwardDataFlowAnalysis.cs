@@ -145,6 +145,9 @@ namespace ILLink.Shared.DataFlow
 		public virtual void TraceStart (TControlFlowGraph cfg) { }
 
 		[Conditional ("DEBUG")]
+		public virtual void TraceFinish () { }
+
+		[Conditional ("DEBUG")]
 		public virtual void TraceVisitBlock (TBlock block) { }
 
 		[Conditional ("DEBUG")]
@@ -348,6 +351,9 @@ namespace ILLink.Shared.DataFlow
 					TraceBlockOutput (state.Current, exceptionState?.Value, exceptionFinallyState);
 				}
 			}
+
+			TraceFinish();
+			// throw new System.Exception("Finished tracing");
 		}
 	}
 }

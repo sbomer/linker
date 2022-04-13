@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -59,6 +60,10 @@ namespace ILLink.RoslynAnalyzer
 
 		public override void Initialize (AnalysisContext context)
 		{
+			if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DEBUG_ANALYZER"))) {
+				while (!System.Diagnostics.Debugger.IsAttached)
+					System.Threading.Thread.Sleep(100);
+			}
 			if (!System.Diagnostics.Debugger.IsAttached)
 				context.EnableConcurrentExecution ();
 			context.ConfigureGeneratedCodeAnalysis (GeneratedCodeAnalysisFlags.ReportDiagnostics);
@@ -92,14 +97,22 @@ namespace ILLink.RoslynAnalyzer
 						}
 					}
 
+					StreamWriter writer;
+					if (System.Environment.GetEnvironmentVariable("TRACE_ILLINK_ANALYZER") is string tracePath) {
+						writer = new StreamWriter(tracePath);
+					} else {
+						writer = new StreamWriter(Console.OpenStandardOutput());
+					}
+
 					foreach (var operationBlock in context.OperationBlocks) {
 						ControlFlowGraph cfg = context.GetControlFlowGraph (operationBlock);
 						TrimDataFlowAnalysis trimDataFlowAnalysis = new (context, cfg);
 
-						foreach (var diagnostic in trimDataFlowAnalysis.ComputeTrimAnalysisPatterns ().CollectDiagnostics ()) {
+						foreach (var diagnostic in trimDataFlowAnalysis.ComputeTrimAnalysisPatterns (writer).CollectDiagnostics ()) {
 							context.ReportDiagnostic (diagnostic);
 						}
 					}
+					writer.Flush();
 				});
 				context.RegisterSyntaxNodeAction (context => {
 					ProcessGenericParameters (context);
