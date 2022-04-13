@@ -135,6 +135,10 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 				// TODO: validate against the field attributes.
 				break;
 			default:
+				// NoneOperation represents operations which are unimplemented by Roslyn
+				// (don't have specific I*Operation types), such as pointer dereferences.
+				if (operation.Target.Kind is OperationKind.None)
+					break;
 				throw new NotImplementedException (operation.Target.GetType ().ToString ());
 			}
 			return value;
