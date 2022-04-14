@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using ILLink.RoslynAnalyzer.DataFlow;
 using ILLink.Shared.DataFlow;
@@ -36,8 +38,15 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			Context = context;
 		}
 
+		public static void ValidateFlowCaptures (ControlFlowGraph cfg) {
+			var captureIds = cfg.DescendantOperations<IFlowCaptureOperation> (OperationKind.FlowCapture).Select(capture => capture.Id).ToImmutableHashSet ();
+			var referencedCaptureIds = cfg.DescendantOperations<IFlowCaptureReferenceOperation> (OperationKind.FlowCaptureReference).Select (captureRef => captureRef.Id).ToImmutableHashSet ();
+			Debug.Assert (referencedCaptureIds.IsSubsetOf(captureIds));
+		}
+
 		public TrimAnalysisPatternStore ComputeTrimAnalysisPatterns ()
 		{
+			ValidateFlowCaptures(ControlFlowGraph.ControlFlowGraph);
 			var lValueFlowCaptures = LValueFlowCapturesProvider.CreateLValueFlowCaptures (ControlFlowGraph.ControlFlowGraph);
 			var visitor = new TrimAnalysisVisitor (Lattice, Context, lValueFlowCaptures);
 			Fixpoint (ControlFlowGraph, Lattice, visitor);
