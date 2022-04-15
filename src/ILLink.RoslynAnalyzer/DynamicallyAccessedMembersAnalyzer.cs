@@ -64,9 +64,17 @@ namespace ILLink.RoslynAnalyzer
 				while (!System.Diagnostics.Debugger.IsAttached)
 					System.Threading.Thread.Sleep(100);
 			}
-			if (!System.Diagnostics.Debugger.IsAttached)
-				context.EnableConcurrentExecution ();
+			// if (!System.Diagnostics.Debugger.IsAttached)
+				// context.EnableConcurrentExecution ();
 			context.ConfigureGeneratedCodeAnalysis (GeneratedCodeAnalysisFlags.ReportDiagnostics);
+			
+			StreamWriter writer;
+			if (System.Environment.GetEnvironmentVariable("TRACE_ILLINK_ANALYZER") is string tracePath) {
+				var proc = System.Diagnostics.Process.GetCurrentProcess();
+				writer = new StreamWriter(tracePath + proc.Id.ToString() + "_" + new Random().Next(100000000));
+			} else {
+				writer = new StreamWriter(Console.OpenStandardOutput());
+			}
 			context.RegisterCompilationStartAction (context => {
 				if (!context.Options.IsMSBuildPropertyValueTrue (MSBuildPropertyOptionNames.EnableTrimAnalyzer, context.Compilation))
 					return;
@@ -95,13 +103,6 @@ namespace ILLink.RoslynAnalyzer
 									return;
 							}
 						}
-					}
-
-					StreamWriter writer;
-					if (System.Environment.GetEnvironmentVariable("TRACE_ILLINK_ANALYZER") is string tracePath) {
-						writer = new StreamWriter(tracePath);
-					} else {
-						writer = new StreamWriter(Console.OpenStandardOutput());
 					}
 
 					foreach (var operationBlock in context.OperationBlocks) {
