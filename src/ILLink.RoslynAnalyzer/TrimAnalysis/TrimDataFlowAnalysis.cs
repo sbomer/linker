@@ -39,9 +39,23 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		}
 
 		public static void ValidateFlowCaptures (ControlFlowGraph cfg) {
-			var captureIds = cfg.DescendantOperations<IFlowCaptureOperation> (OperationKind.FlowCapture).Select(capture => capture.Id).ToImmutableHashSet ();
-			var referencedCaptureIds = cfg.DescendantOperations<IFlowCaptureReferenceOperation> (OperationKind.FlowCaptureReference).Select (captureRef => captureRef.Id).ToImmutableHashSet ();
-			Debug.Assert (referencedCaptureIds.IsSubsetOf(captureIds));
+			var captureIds = cfg
+				.DescendantOperations<IFlowCaptureOperation> (OperationKind.FlowCapture)
+				.Select(capture => capture.Id)
+				.ToImmutableHashSet ();
+			var captureReferences = cfg
+				.DescendantOperations<IFlowCaptureReferenceOperation> (OperationKind.FlowCaptureReference);
+			var initializedIds = captureReferences
+				.Where (captureRef => captureRef.IsInitialization)
+				.Select (captureRef => captureRef.Id)
+				.ToImmutableHashSet ();
+			var referencedCaptureIds = captureReferences
+				.Select (captureRef => captureRef.Id)
+				.ToImmutableHashSet ();
+
+			var capturedOrInitialized = captureIds.Union(initializedIds);
+			Debug.Assert (referencedCaptureIds.IsSubsetOf(capturedOrInitialized));
+			// Debug.Assert (referencedCaptureIds.IsSubsetOf(captureIds));
 		}
 
 		public TrimAnalysisPatternStore ComputeTrimAnalysisPatterns ()
