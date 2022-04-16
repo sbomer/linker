@@ -68,10 +68,20 @@ namespace Mono.Linker.Dataflow
 			_scopeStack = scopeStack;
 		}
 
-		public override void Scan (MethodBody methodBody)
+		// TODO: check ScopeStack in MethodBodyScanner, and don't make InterproceduralScan virtual?
+		public override void InterproceduralScan (MethodBody methodBody)
 		{
-			base.Scan (methodBody);
+			Debug.Assert (_scopeStack.CurrentScope.Origin.Provider is MethodDefinition method && method.Body == methodBody);
+			base.InterproceduralScan (methodBody);
+		}
 
+		public override void Scan (MethodBody methodBody, InterproceduralDataFlowState interproceduralState)
+		{
+			using var _ = _scopeStack.PushScope (new MessageOrigin (methodBody.Method));
+			Debug.Assert (_scopeStack.CurrentScope.Origin.Provider is MethodDefinition methodProvider && methodProvider.Body == methodBody);
+			base.Scan (methodBody, interproceduralState);
+
+			// TODO: do the following on every scan or just interprocedural scan?
 			if (GetReturnTypeWithoutModifiers (methodBody.Method.ReturnType).MetadataType != MetadataType.Void) {
 				var method = methodBody.Method;
 				var methodReturnValue = GetMethodReturnValue (method);
@@ -832,7 +842,8 @@ namespace Mono.Linker.Dataflow
 					}
 				}
 
-				_markStep.CheckAndReportRequiresUnreferencedCode (calledMethodDefinition);
+				if (!_markStep.ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (_markStep.ScopeStack.CurrentScope.Origin))
+					_markStep.CheckAndReportRequiresUnreferencedCode (calledMethodDefinition);
 
 				// To get good reporting of errors we need to track the origin of the value for all method calls
 				// but except Newobj as those are special.

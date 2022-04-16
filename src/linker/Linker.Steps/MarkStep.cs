@@ -81,7 +81,7 @@ namespace Mono.Linker.Steps
 		readonly HashSet<TypeDefinition> _entireTypesMarked;
 		DynamicallyAccessedMembersTypeHierarchy? _dynamicallyAccessedMembersTypeHierarchy;
 		MarkScopeStack? _scopeStack;
-		MarkScopeStack ScopeStack {
+		public MarkScopeStack ScopeStack {
 			get {
 				Debug.Assert (_scopeStack != null);
 				return _scopeStack;
@@ -2861,11 +2861,29 @@ namespace Mono.Linker.Steps
 				return;
 			}
 
+			// If the caller of a method is already marked with `RequiresUnreferencedCodeAttribute` a new warning should not
+			// be produced for the callee.
+			var origin = ScopeStack.CurrentScope.Origin;
+			if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (origin))
+				return;
+			
+			// Warn on reflection access to compiler-generated methods
+			switch (dependencyKind) {
+			case DependencyKind.DynamicDependency:
+			case DependencyKind.DynamicallyAccessedMember:
+			case DependencyKind.DynamicallyAccessedMemberOnType:
+			case DependencyKind.AccessedViaReflection:
+				if (CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name))
+					Context.LogWarning (origin, DiagnosticId.CompilerGeneratedMethodAccessedViaReflection, method.GetDisplayName ());
+				break;
+			default:
+				break;
+			}
+
 			CheckAndReportRequiresUnreferencedCode (method);
 
 			if (Context.Annotations.FlowAnnotations.ShouldWarnWhenAccessedForReflection (method)) {
 				// If the current scope has analysis warnings suppressed, don't generate any
-				var origin = ScopeStack.CurrentScope.Origin;
 				if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (origin))
 					return;
 
@@ -2914,12 +2932,6 @@ namespace Mono.Linker.Steps
 
 		internal void CheckAndReportRequiresUnreferencedCode (MethodDefinition method)
 		{
-			// If the caller of a method is already marked with `RequiresUnreferencedCodeAttribute` a new warning should not
-			// be produced for the callee.
-			var origin = ScopeStack.CurrentScope.Origin;
-			if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (origin))
-				return;
-
 			if (!Annotations.DoesMethodRequireUnreferencedCode (method, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCode))
 				return;
 
@@ -3515,7 +3527,7 @@ namespace Mono.Linker.Steps
 		{
 			if (requiresReflectionMethodBodyScanner) {
 				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
-				scanner.Scan (body);
+				scanner.InterproceduralScan (body);
 			}
 		}
 

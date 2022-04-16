@@ -1716,6 +1716,11 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			[ExpectedWarning ("IL2026", "--TestLocalFunctionWithClosureWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLocalFunctionInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLocalFunctionWithClosureInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
+			// Trimmer produces warnings about reflection access to compiler-generated methods.
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionWithClosureInMethodWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionWithClosureWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionInMethodWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionWithRequires), ProducedBy = ProducedBy.Trimmer)]
 			static void TestAll ()
 			{
 				typeof (LocalFunctionsReferencedViaReflection).RequiresAll ();
@@ -1729,6 +1734,11 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			[ExpectedWarning ("IL2026", "--TestLocalFunctionWithClosureWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLocalFunctionInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLocalFunctionWithClosureInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
+			// Trimmer produces warnings about reflection access to compiler-generated methods.
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionWithClosureInMethodWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionWithClosureWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionInMethodWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLocalFunctionWithRequires), ProducedBy = ProducedBy.Trimmer)]
 			static void TestNonPublicMethods ()
 			{
 				typeof (LocalFunctionsReferencedViaReflection).RequiresNonPublicMethods ();
@@ -1807,6 +1817,11 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
+			// Trimmer produces warnings about reflection access to compiler-generated methods.
+			[ExpectedWarning ("IL2117", nameof (TestLambdaWithClosureInMethodWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLambdaWithClosureWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLambdaInMethodWithRequires), ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2117", nameof (TestLambdaWithRequires), ProducedBy = ProducedBy.Trimmer)]
 			static void TestAll ()
 			{
 				typeof (LambdasReferencedViaReflection).RequiresAll ();

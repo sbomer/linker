@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using ILLink.Shared.DataFlow;
 using ILLink.Shared.TrimAnalysis;
@@ -10,6 +11,7 @@ using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
+using Mono.Linker.Steps;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace Mono.Linker.Dataflow
@@ -207,7 +209,47 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		public virtual void Scan (MethodBody methodBody)
+		public class InterproceduralDataFlowState {
+			public ValueSet<MethodDefinition> ReachableMethods { get; set; }
+			public InterproceduralDataFlowState ()
+			{
+				ReachableMethods = new ValueSet<MethodDefinition> ();
+			}
+			public InterproceduralDataFlowState Clone() => new InterproceduralDataFlowState { ReachableMethods = ReachableMethods.Clone () };
+		}
+
+		public virtual void InterproceduralScan (MethodBody methodBody)
+		{
+			var interproceduralState = new InterproceduralDataFlowState {
+				ReachableMethods = new ValueSet<MethodDefinition> (methodBody.Method)
+			};
+
+			// Optimization to prevent multiple scans of a method.
+			// Eventually we will need to allow re-scanning in some cases, for example
+			// when we discover new inputs to a method. But we aren't doing dataflow for
+			// lambdas and local functions yet, so no need yet.
+			var scannedMethods = new HashSet<MethodDefinition>();
+
+			while (true) {
+				// Get the next method to scan.
+				MethodDefinition? methodToScan = null;
+				foreach (var method in interproceduralState.ReachableMethods) {
+					if (!scannedMethods.Contains (method) && method.HasBody) {
+						methodToScan = method;
+						break;
+					}
+				}
+
+				if (methodToScan == null)
+					break;
+
+				Scan (methodToScan.Body, interproceduralState);
+				scannedMethods.Add (methodToScan);
+			}
+		}
+
+		// Scans the method as well as any nested functions (local functions or lambdas) reachable from it.
+		public virtual void Scan (MethodBody methodBody, InterproceduralDataFlowState interproceduralState)
 		{
 			MethodDefinition thisMethod = methodBody.Method;
 
@@ -315,11 +357,15 @@ namespace Mono.Linker.Dataflow
 					break;
 
 				case Code.Arglist:
-				case Code.Ldftn:
 				case Code.Sizeof:
 				case Code.Ldc_I8:
 				case Code.Ldc_R4:
 				case Code.Ldc_R8:
+					PushUnknown (currentStack);
+					break;
+
+				case Code.Ldftn:
+					TrackNestedFunctionReference ((MethodReference) operation.Operand, interproceduralState);
 					PushUnknown (currentStack);
 					break;
 
@@ -545,7 +591,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Call:
 				case Code.Callvirt:
 				case Code.Newobj:
-					HandleCall (methodBody, operation, currentStack, curBasicBlock);
+					HandleCall (methodBody, operation, currentStack, curBasicBlock, interproceduralState);
 					break;
 
 				case Code.Jmp:
@@ -887,11 +933,23 @@ namespace Mono.Linker.Dataflow
 			return methodParams;
 		}
 
+		void TrackNestedFunctionReference (MethodReference referencedMethod, InterproceduralDataFlowState dataflowState)
+		{
+			var method = _context.TryResolve (referencedMethod);
+			if (method != null && CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name)) {
+				var reachableMethods = new HashSet<MethodDefinition> (dataflowState.ReachableMethods);
+				reachableMethods.Add (method);
+				// Work around the fact that we can't mutate the ValueSet in-place because it is a readonly struct.
+				dataflowState.ReachableMethods = new ValueSet<MethodDefinition> (reachableMethods);
+			}
+		}
+
 		private void HandleCall (
 			MethodBody callingMethodBody,
 			Instruction operation,
 			Stack<StackSlot> currentStack,
-			int curBasicBlock)
+			int curBasicBlock,
+			InterproceduralDataFlowState interproceduralState)
 		{
 			MethodReference calledMethod = (MethodReference) operation.Operand;
 
@@ -900,6 +958,8 @@ namespace Mono.Linker.Dataflow
 			SingleValue? newObjValue;
 			ValueNodeList methodParams = PopCallArguments (currentStack, calledMethod, callingMethodBody, isNewObj,
 														   operation.Offset, out newObjValue);
+
+			TrackNestedFunctionReference (calledMethod, interproceduralState);
 
 			MultiValue methodReturnValue;
 			bool handledFunction = HandleCall (

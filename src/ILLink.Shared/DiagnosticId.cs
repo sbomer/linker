@@ -1,4 +1,4 @@
-﻿// Licensed to the .NET Foundation under one or more agreements.
+// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 namespace ILLink.Shared
@@ -175,6 +175,7 @@ namespace ILLink.Shared
 		DynamicallyAccessedMembersOnTypeReferencesMemberWithDynamicallyAccessedMembers = 2114,
 		DynamicallyAccessedMembersOnTypeReferencesMemberOnBaseWithDynamicallyAccessedMembers = 2115,
 		RequiresUnreferencedCodeOnStaticConstructor = 2116,
+		CompilerGeneratedMethodAccessedViaReflection = 2117,
 
 		// Single-file diagnostic ids.
 		AvoidAssemblyLocationInSingleFile = 3000,

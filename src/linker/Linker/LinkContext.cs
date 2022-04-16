@@ -72,7 +72,7 @@ namespace Mono.Linker
 		readonly AnnotationStore _annotations;
 		readonly CustomAttributeSource _customAttributes;
 		readonly CompilerGeneratedState _compilerGeneratedState;
-		readonly List<MessageContainer> _cachedWarningMessageContainers;
+		readonly HashSet<MessageContainer> _cachedWarningMessageContainers;
 		readonly ILogger _logger;
 		readonly Dictionary<AssemblyDefinition, bool> _isTrimmable;
 
@@ -195,7 +195,7 @@ namespace Mono.Linker
 			_parameters = new Dictionary<string, string> (StringComparer.Ordinal);
 			_customAttributes = new CustomAttributeSource (this);
 			_compilerGeneratedState = new CompilerGeneratedState (this);
-			_cachedWarningMessageContainers = new List<MessageContainer> ();
+			_cachedWarningMessageContainers = new HashSet<MessageContainer> ();
 			_isTrimmable = new Dictionary<AssemblyDefinition, bool> ();
 			OutputDirectory = outputDirectory;
 			FeatureSettings = new Dictionary<string, bool> (StringComparer.Ordinal);
@@ -688,8 +688,9 @@ namespace Mono.Linker
 
 		public void FlushCachedWarnings ()
 		{
-			_cachedWarningMessageContainers.Sort ();
-			foreach (var warning in _cachedWarningMessageContainers)
+			var warnings = new List<MessageContainer> (_cachedWarningMessageContainers);
+			warnings.Sort ();
+			foreach (var warning in warnings)
 				LogMessage (warning);
 
 			_cachedWarningMessageContainers.Clear ();
