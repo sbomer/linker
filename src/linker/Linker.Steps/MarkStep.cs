@@ -1659,7 +1659,7 @@ namespace Mono.Linker.Steps
 
 			if (reason.Kind != DependencyKind.DynamicallyAccessedMemberOnType &&
 				Annotations.DoesFieldRequireUnreferencedCode (field, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCodeAttribute) &&
-				!ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode ())
+				!ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (ScopeStack.CurrentScope.Origin.Provider))
 				ReportRequiresUnreferencedCode (field.GetDisplayName (), requiresUnreferencedCodeAttribute, ScopeStack.CurrentScope.Origin);
 
 			switch (reason.Kind) {
@@ -1668,7 +1668,7 @@ namespace Mono.Linker.Steps
 			case DependencyKind.DynamicallyAccessedMember:
 			case DependencyKind.InteropMethodDependency:
 				if (Context.Annotations.FlowAnnotations.ShouldWarnWhenAccessedForReflection (field) &&
-					!ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode ())
+					!ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (ScopeStack.CurrentScope.Origin.Provider))
 					Context.LogWarning (ScopeStack.CurrentScope.Origin, DiagnosticId.DynamicallyAccessedMembersFieldAccessedViaReflection, field.GetDisplayName ());
 
 				break;
@@ -2894,7 +2894,7 @@ namespace Mono.Linker.Steps
 
 			if (Context.Annotations.FlowAnnotations.ShouldWarnWhenAccessedForReflection (method)) {
 				// If the current scope has analysis warnings suppressed, don't generate any
-				if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode ())
+				if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (ScopeStack.CurrentScope.Origin.Provider))
 					return;
 
 				// ReflectionMethodBodyScanner handles more cases for data flow annotations
@@ -2912,15 +2912,12 @@ namespace Mono.Linker.Steps
 			}
 		}
 
-		internal bool ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode ()
+		internal bool ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (ICustomAttributeProvider? originMember)
 		{
 			// Check if the current scope method has RequiresUnreferencedCode on it
 			// since that attribute automatically suppresses all trim analysis warnings.
 			// Check both the immediate origin method as well as suppression context method
 			// since that will be different for compiler generated code.
-			var currentOrigin = ScopeStack.CurrentScope.Origin;
-
-			ICustomAttributeProvider? originMember = currentOrigin.Provider;
 			if (originMember == null)
 				return false;
 
@@ -2946,7 +2943,7 @@ namespace Mono.Linker.Steps
 		{
 			// If the caller of a method is already marked with `RequiresUnreferencedCodeAttribute` a new warning should not
 			// be produced for the callee.
-			if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode ())
+			if (ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (ScopeStack.CurrentScope.Origin.Provider))
 				return;
 
 			if (!Annotations.DoesMethodRequireUnreferencedCode (method, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCode))
