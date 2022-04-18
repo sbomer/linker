@@ -14,7 +14,6 @@ namespace Mono.Linker.Dataflow
 	{
 		readonly LinkContext _context;
 		readonly MarkStep _markStep;
-		readonly MarkScopeStack _scopeStack;
 
 		// Cache of DynamicallyAccessedMembers annotations applied to types and their hierarchies
 		// Values
@@ -39,11 +38,10 @@ namespace Mono.Linker.Dataflow
 		// of a type which is currently being marked - at which point the interfaces are not yet marked.
 		readonly Dictionary<TypeDefinition, (DynamicallyAccessedMemberTypes annotation, bool applied)> _typesInDynamicallyAccessedMembersHierarchy;
 
-		public DynamicallyAccessedMembersTypeHierarchy (LinkContext context, MarkStep markStep, MarkScopeStack scopeStack)
+		public DynamicallyAccessedMembersTypeHierarchy (LinkContext context, MarkStep markStep)
 		{
 			_context = context;
 			_markStep = markStep;
-			_scopeStack = scopeStack;
 			_typesInDynamicallyAccessedMembersHierarchy = new Dictionary<TypeDefinition, (DynamicallyAccessedMemberTypes, bool)> ();
 		}
 
@@ -116,10 +114,10 @@ namespace Mono.Linker.Dataflow
 			if (apply) {
 				// One of the base/interface types is already marked as having the annotation applied
 				// so we need to apply the annotation to this type as well
-				using var _ = _scopeStack.PushScope (new MessageOrigin (type));
-				var reflectionMethodBodyScanner = new ReflectionMethodBodyScanner (_context, _markStep, _scopeStack.CurrentScope.Origin);
+				var origin = new MessageOrigin (type);
+				var reflectionMethodBodyScanner = new ReflectionMethodBodyScanner (_context, _markStep, origin);
 				// Report warnings on access to annotated members, with the annotated type as the origin.
-				ApplyDynamicallyAccessedMembersToType (ref reflectionMethodBodyScanner, _scopeStack.CurrentScope.Origin.Provider, type, annotation);
+				ApplyDynamicallyAccessedMembersToType (ref reflectionMethodBodyScanner, origin.Provider, type, annotation);
 			}
 
 			return (annotation, apply);
@@ -140,9 +138,9 @@ namespace Mono.Linker.Dataflow
 				return annotation;
 
 			// Apply the effective annotation for the type
-			using var _ = _scopeStack.PushScope (new MessageOrigin (type));
+			var origin = new MessageOrigin (type);
 			// Report warnings on access to annotated members, with the annotated type as the origin.
-			ApplyDynamicallyAccessedMembersToType (ref reflectionMethodBodyScanner, _scopeStack.CurrentScope.Origin.Provider, type, annotation);
+			ApplyDynamicallyAccessedMembersToType (ref reflectionMethodBodyScanner, origin.Provider, type, annotation);
 
 			// Mark it as applied in the cache
 			_typesInDynamicallyAccessedMembersHierarchy[type] = (annotation, true);
@@ -210,9 +208,9 @@ namespace Mono.Linker.Dataflow
 			}
 
 			if (applied) {
-				using var _ = _scopeStack.PushScope (new MessageOrigin (type));
+				var origin = new MessageOrigin (type);
 				// Report warnings on access to annotated members, with the annotated type as the origin.
-				ApplyDynamicallyAccessedMembersToType (ref reflectionMethodBodyScanner, _scopeStack.CurrentScope.Origin.Provider, type, annotation);
+				ApplyDynamicallyAccessedMembersToType (ref reflectionMethodBodyScanner, origin.Provider, type, annotation);
 				_typesInDynamicallyAccessedMembersHierarchy[type] = (annotation, true);
 			}
 

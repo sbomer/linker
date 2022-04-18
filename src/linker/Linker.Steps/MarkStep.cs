@@ -238,7 +238,7 @@ namespace Mono.Linker.Steps
 			_unreachableBlocksOptimizer = new UnreachableBlocksOptimizer (_context);
 			_markContext = new MarkStepContext ();
 			_scopeStack = new MarkScopeStack ();
-			_dynamicallyAccessedMembersTypeHierarchy = new DynamicallyAccessedMembersTypeHierarchy (_context, this, _scopeStack);
+			_dynamicallyAccessedMembersTypeHierarchy = new DynamicallyAccessedMembersTypeHierarchy (_context, this);
 
 			Initialize ();
 			Process ();
