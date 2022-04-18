@@ -1241,7 +1241,7 @@ namespace Mono.Linker.Steps
 			MarkCustomAttributeArgument (namedArgument.Argument, ca);
 
 			if (property != null && Context.Annotations.FlowAnnotations.RequiresDataFlowAnalysis (property.SetMethod)) {
-				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
+				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack.CurrentScope.Origin);
 				scanner.ProcessAttributeDataflow (property.SetMethod, new List<CustomAttributeArgument> { namedArgument.Argument });
 			}
 		}
@@ -1278,7 +1278,7 @@ namespace Mono.Linker.Steps
 			MarkCustomAttributeArgument (namedArgument.Argument, ca);
 
 			if (field != null && Context.Annotations.FlowAnnotations.RequiresDataFlowAnalysis (field)) {
-				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
+				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack.CurrentScope.Origin);
 				scanner.ProcessAttributeDataflow (field, namedArgument.Argument);
 			}
 		}
@@ -1321,7 +1321,7 @@ namespace Mono.Linker.Steps
 
 			var resolvedConstructor = Context.TryResolve (ca.Constructor);
 			if (resolvedConstructor != null && Context.Annotations.FlowAnnotations.RequiresDataFlowAnalysis (resolvedConstructor)) {
-				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
+				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack.CurrentScope.Origin);
 				scanner.ProcessAttributeDataflow (resolvedConstructor, ca.ConstructorArguments);
 			}
 		}
@@ -2567,7 +2567,7 @@ namespace Mono.Linker.Steps
 					Debug.Assert (instance is MemberReference);
 
 					using var _ = ScopeStack.CurrentScope.Origin.Provider == null ? ScopeStack.PushScope (new MessageOrigin (((MemberReference) instance).Resolve ())) : null;
-					var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
+					var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack.CurrentScope.Origin);
 					scanner.ProcessGenericArgumentDataFlow (parameter, argument);
 				}
 
@@ -3540,7 +3540,7 @@ namespace Mono.Linker.Steps
 		protected virtual void MarkReflectionLikeDependencies (MethodBody body, bool requiresReflectionMethodBodyScanner)
 		{
 			if (requiresReflectionMethodBodyScanner) {
-				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack);
+				var scanner = new ReflectionMethodBodyScanner (Context, this, ScopeStack.CurrentScope.Origin);
 				scanner.ScanAndProcessReturnValue (body);
 			}
 		}
