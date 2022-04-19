@@ -49,9 +49,9 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 			TestBackwardEdgeWithLdElem ();
 		}
 
-		[ExpectedWarning ("IL2072",
-				"Mono.Linker.Tests.Cases.DataFlow.LocalDataFlow.GetWithPublicMethods()",
-				nameof (DataFlowStringExtensions) + "." + nameof (DataFlowStringExtensions.RequiresPublicFields) + "(String)")]
+		// [ExpectedWarning ("IL2072",
+				// "Mono.Linker.Tests.Cases.DataFlow.LocalDataFlow.GetWithPublicMethods()",
+				// nameof (DataFlowStringExtensions) + "." + nameof (DataFlowStringExtensions.RequiresPublicFields) + "(String)")]
 		[ExpectedWarning ("IL2072",
 				"Mono.Linker.Tests.Cases.DataFlow.LocalDataFlow.GetWithPublicFields()",
 				nameof (DataFlowStringExtensions) + "." + nameof (DataFlowStringExtensions.RequiresPublicMethods) + "(String)")]
