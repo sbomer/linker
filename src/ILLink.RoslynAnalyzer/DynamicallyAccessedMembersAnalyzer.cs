@@ -65,6 +65,13 @@ namespace ILLink.RoslynAnalyzer
 
 		public override void Initialize (AnalysisContext context)
 		{
+
+			if (!string.IsNullOrEmpty (Environment.GetEnvironmentVariable ("DEBUG_ILLINK_ANALYZER"))) {
+        		// System.Console.WriteLine ($"Waiting for debugger attach (})...");
+				while (!System.Diagnostics.Debugger.IsAttached)
+					System.Threading.Thread.Sleep(100);
+			}
+
 			if (!System.Diagnostics.Debugger.IsAttached)
 				context.EnableConcurrentExecution ();
 			context.ConfigureGeneratedCodeAnalysis (GeneratedCodeAnalysisFlags.ReportDiagnostics);

@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using ILLink.Shared;
+using ILLink.Shared.DataFlow;
+using ILLink.Shared.TrimAnalysis;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace Mono.Linker.Dataflow
@@ -47,7 +50,7 @@ namespace Mono.Linker.Dataflow
 		}
 	}
 
-	public struct ValueBasicBlockPair
+	public struct ValueBasicBlockPair : IEquatable<ValueBasicBlockPair>
 	{
 		public ValueBasicBlockPair (MultiValue value, int basicBlockIndex)
 		{
@@ -57,5 +60,21 @@ namespace Mono.Linker.Dataflow
 
 		public MultiValue Value { get; }
 		public int BasicBlockIndex { get; }
+
+		public bool Equals (ValueBasicBlockPair other) => Value.Equals (other.Value) && BasicBlockIndex.Equals (other.BasicBlockIndex);
+
+		public override bool Equals (object? obj) => obj is ValueBasicBlockPair other && Equals (other);
+
+		public override int GetHashCode () => HashUtils.Combine (Value.GetHashCode (), BasicBlockIndex);
 	}
+
+	// public struct ValueBasicBlockPairLattice : ILattice<ValueBasicBlockPair>
+	// {
+	// 	public ValueBasicBlockPair Top => new (UnknownValue.Instance, -1);
+
+	// 	public ValueBasicBlockPair Meet (ValueBasicBlockPair left, ValueBasicBlockPair right)
+	// 	{
+			
+	// 	}
+	// }
 }

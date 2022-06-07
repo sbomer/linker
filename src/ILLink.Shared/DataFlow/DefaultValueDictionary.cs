@@ -20,7 +20,7 @@ namespace ILLink.Shared.DataFlow
 	{
 		Dictionary<TKey, TValue>? Dictionary;
 
-		readonly TValue DefaultValue;
+		public readonly TValue DefaultValue;
 
 		public DefaultValueDictionary (TValue defaultValue) => (Dictionary, DefaultValue) = (null, defaultValue);
 
@@ -62,6 +62,8 @@ namespace ILLink.Shared.DataFlow
 			return true;
 		}
 
+		public int Count => Dictionary?.Count ?? 0;
+
 		public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator ()
 		{
 			return Dictionary?.GetEnumerator () ?? Enumerable.Empty<KeyValuePair<TKey, TValue>> ().GetEnumerator ();
@@ -80,6 +82,11 @@ namespace ILLink.Shared.DataFlow
 			sb.Append (Environment.NewLine).Append ("\t_ -> ").Append (DefaultValue.ToString ());
 			sb.Append (Environment.NewLine).Append ("}");
 			return sb.ToString ();
+		}
+
+		public DefaultValueDictionary<TKey, TValue> Clone ()
+		{
+			throw new NotImplementedException ("Clone DefaultValueDictionary");
 		}
 	}
 }

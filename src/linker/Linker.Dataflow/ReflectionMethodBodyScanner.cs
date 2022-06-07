@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -13,6 +14,17 @@ using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Linker.Steps;
+using LocalVariableStore = System.Collections.Generic.Dictionary<Mono.Cecil.Cil.VariableDefinition, Mono.Linker.Dataflow.ValueBasicBlockPair>;
+using HoistedLocalStore = ILLink.Shared.DataFlow.DefaultValueDictionary<ILLink.Shared.DataFlow.HoistedLocalKey, Mono.Linker.Dataflow.ValueBasicBlockPair>;
+using InterproceduralState = ILLink.Shared.DataFlow.DefaultValueDictionary<
+	ILLink.Shared.TypeSystemProxy.MethodProxy,
+	ILLink.Shared.DataFlow.Maybe<
+		ILLink.Shared.DataFlow.DefaultValueDictionary<
+			ILLink.Shared.DataFlow.HoistedLocalKey,
+			ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>
+		>
+	>
+>;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace Mono.Linker.Dataflow
@@ -70,10 +82,10 @@ namespace Mono.Linker.Dataflow
 			TrimAnalysisPatterns.MarkAndProduceDiagnostics (reflectionMarker, _markStep);
 		}
 
-		protected override void Scan (MethodBody methodBody, ref ValueSet<MethodProxy> methodsInGroup)
+		protected override void Scan (MethodBody methodBody, ref InterproceduralState interproceduralState)
 		{
 			_origin = new MessageOrigin (methodBody.Method);
-			base.Scan (methodBody, ref methodsInGroup);
+			base.Scan (methodBody, ref interproceduralState);
 
 			if (!methodBody.Method.ReturnsVoid ()) {
 				var method = methodBody.Method;

@@ -51,6 +51,11 @@ namespace Mono.Linker
 
 		public static int Main (string[] args)
 		{
+			if (!string.IsNullOrEmpty (Environment.GetEnvironmentVariable ("DEBUG_ILLINK"))) {
+        		System.Console.WriteLine ($"Waiting for debugger attach ({Environment.ProcessId})...");
+				while (!System.Diagnostics.Debugger.IsAttached)
+					System.Threading.Thread.Sleep(100);
+			}
 			if (args.Length == 0) {
 				Console.Error.WriteLine ("No parameters specified");
 				return 1;

@@ -8,6 +8,12 @@ namespace ILLink.RoslynAnalyzer.Tests
 	{
 
 		[Fact]
+		public Task CompilerGeneratedCodeDataflow ()
+		{
+			return RunTest (allowMissingWarnings: true);
+		}
+
+		[Fact]
 		public Task MethodByRefParameterDataFlow ()
 		{
 			return RunTest (allowMissingWarnings: true);

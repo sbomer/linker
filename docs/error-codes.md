@@ -1857,6 +1857,10 @@ void TestMethod()
 
   ```
 
+#### `IL2118`: Trim analysis: Compiler-generated member 'member' is accessed via reflection. Trimmer can't guarantee availability of the requirements of the member.
+
+- 
+
 
 ## Single-File Warning Codes
 

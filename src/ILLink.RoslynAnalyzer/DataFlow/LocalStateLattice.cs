@@ -2,34 +2,12 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using ILLink.Shared.DataFlow;
-using Microsoft.CodeAnalysis;
+using ILLink.RoslynAnalyzer.DataFlow;
 using Microsoft.CodeAnalysis.FlowAnalysis;
 
-namespace ILLink.RoslynAnalyzer.DataFlow
+namespace ILLink.Shared.DataFlow
 {
-	public readonly struct LocalKey : IEquatable<LocalKey>
-	{
-		readonly ILocalSymbol? Local;
-
-		readonly CaptureId? CaptureId;
-
-		public LocalKey (ILocalSymbol symbol) => (Local, CaptureId) = (symbol, null);
-
-		public LocalKey (CaptureId captureId) => (Local, CaptureId) = (null, captureId);
-
-		public bool Equals (LocalKey other) => SymbolEqualityComparer.Default.Equals (Local, other.Local) &&
-			(CaptureId?.Equals (other.CaptureId) ?? other.CaptureId == null);
-
-		public override string ToString ()
-		{
-			if (Local != null)
-				return Local.ToString ();
-			return $"capture {CaptureId.GetHashCode ()}";
-		}
-	}
-
-	public struct LocalState<TValue> : IEquatable<LocalState<TValue>>
+    public partial struct LocalState<TValue> : IEquatable<LocalState<TValue>>
 		where TValue : IEquatable<TValue>
 	{
 		public DefaultValueDictionary<LocalKey, TValue> Dictionary;
@@ -49,23 +27,17 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			: this (dictionary, new DefaultValueDictionary<CaptureId, CapturedReferenceValue> (new CapturedReferenceValue ()))
 		{
 		}
+    }
 
-		public bool Equals (LocalState<TValue> other) => Dictionary.Equals (other.Dictionary);
-
-		public TValue Get (LocalKey key) => Dictionary.Get (key);
-
-		public void Set (LocalKey key, TValue value) => Dictionary.Set (key, value);
-
-		public override string ToString () => Dictionary.ToString ();
-	}
-
-	// Wrapper struct exists purely to substitute a concrete LocalKey for TKey of DictionaryLattice
-	public readonly struct LocalStateLattice<TValue, TValueLattice> : ILattice<LocalState<TValue>>
+	public readonly partial struct LocalStateLattice<TValue, TValueLattice> : ILattice<LocalState<TValue>>
 		where TValue : struct, IEquatable<TValue>
 		where TValueLattice : ILattice<TValue>
 	{
 		public readonly DictionaryLattice<LocalKey, TValue, TValueLattice> Lattice;
+
 		public readonly DictionaryLattice<CaptureId, CapturedReferenceValue, CapturedReferenceLattice> CapturedReferenceLattice;
+
+		public LocalState<TValue> Top { get; }
 
 		public LocalStateLattice (TValueLattice valueLattice)
 		{
@@ -74,9 +46,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			Top = new (Lattice.Top);
 		}
 
-		public LocalState<TValue> Top { get; }
-
-		public LocalState<TValue> Meet (LocalState<TValue> left, LocalState<TValue> right)
+		public partial LocalState<TValue> Meet (LocalState<TValue> left, LocalState<TValue> right)
 		{
 			var dictionary = Lattice.Meet (left.Dictionary, right.Dictionary);
 			var capturedProperties = CapturedReferenceLattice.Meet (left.CapturedReferences, right.CapturedReferences);

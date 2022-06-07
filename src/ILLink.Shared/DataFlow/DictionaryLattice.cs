@@ -23,6 +23,9 @@ namespace ILLink.Shared.DataFlow
 
 		public DefaultValueDictionary<TKey, TValue> Meet (DefaultValueDictionary<TKey, TValue> left, DefaultValueDictionary<TKey, TValue> right)
 		{
+			if (!left.DefaultValue.Equals (right.DefaultValue))
+				throw new ArgumentException ("Meet of DefaultValueDictionary with different default values");
+
 			var met = new DefaultValueDictionary<TKey, TValue> (left);
 			foreach (var kvp in right) {
 				TKey key = kvp.Key;

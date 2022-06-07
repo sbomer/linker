@@ -179,6 +179,8 @@ namespace ILLink.Shared
 		CompilerGeneratedMemberAccessedViaReflection = 2118,
 		DynamicallyAccessedMembersOnTypeReferencesCompilerGeneratedMember = 2119,
 		DynamicallyAccessedMembersOnTypeReferencesCompilerGeneratedMemberOnBase = 2120,
+		// Keep this in sync with GetDiagnosticSubcategory when adding new warnings.
+
 
 		// Single-file diagnostic ids.
 		AvoidAssemblyLocationInSingleFile = 3000,

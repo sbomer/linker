@@ -53,6 +53,26 @@ namespace Mono.Linker
 			}
 		}
 
+		public static bool IsHoistedLocal (FieldDefinition field)
+		{
+			// return CompilerGeneratedNames.IsGeneratedMemberName (field.Name);
+			if (CompilerGeneratedNames.IsLambdaDisplayClass (field.DeclaringType.Name))
+				return true;
+
+			if (CompilerGeneratedNames.IsHoistedStateMachineField (field.Name)) {
+				Debug.Assert (CompilerGeneratedNames.IsStateMachineType (field.DeclaringType.Name));
+				return true;
+			}
+
+			// this check hits a builder field of state machines which is loaded as a ref.
+			// the more specific check for the field name fixes this.
+			// if (CompilerGeneratedNames.IsStateMachineType (field.DeclaringType.Name))
+			// 	return true;
+
+			return false;
+				// CompilerGeneratedNames.IsStateMachineType (field.DeclaringType.Name);
+		}
+
 		// "Nested function" refers to lambdas and local functions.
 		public static bool IsNestedFunctionOrStateMachineMember (IMemberDefinition member)
 		{

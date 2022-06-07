@@ -13,7 +13,24 @@ using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
-using LocalVariableStore = System.Collections.Generic.Dictionary<Mono.Cecil.Cil.VariableDefinition, Mono.Linker.Dataflow.ValueBasicBlockPair>;
+// using LocalVariableStore = ILLink.Shared.DataFlow.LocalState<Mono.Linker.Dataflow.ValueBasicBlockPair>;
+using LocalVariableStore = ILLink.Shared.DataFlow.DefaultValueDictionary<ILLink.Shared.DataFlow.LocalKey, Mono.Linker.Dataflow.ValueBasicBlockPair>;
+using HoistedLocalStore = ILLink.Shared.DataFlow.DefaultValueDictionary<ILLink.Shared.DataFlow.HoistedLocalKey, Mono.Linker.Dataflow.ValueBasicBlockPair>;
+
+using HoistedLocalState = ILLink.Shared.DataFlow.DefaultValueDictionary<
+	ILLink.Shared.DataFlow.HoistedLocalKey,
+	ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>
+>;
+
+using InterproceduralState = ILLink.Shared.DataFlow.DefaultValueDictionary<
+	ILLink.Shared.TypeSystemProxy.MethodProxy,
+	ILLink.Shared.DataFlow.Maybe<
+		ILLink.Shared.DataFlow.DefaultValueDictionary<
+			ILLink.Shared.DataFlow.HoistedLocalKey,
+			ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>
+		>
+	>
+>;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace Mono.Linker.Dataflow
@@ -45,7 +62,18 @@ namespace Mono.Linker.Dataflow
 	{
 		protected readonly LinkContext _context;
 		protected static ValueSetLattice<SingleValue> MultiValueLattice => default;
-		protected static ValueSetLattice<MethodProxy> MethodLattice => default;
+		protected static DictionaryLattice<
+			MethodProxy,
+			Maybe<HoistedLocalState>,
+			MaybeLattice<
+				HoistedLocalState,
+				DictionaryLattice<
+					HoistedLocalKey,
+					MultiValue,
+					ValueSetLattice<SingleValue>
+				>
+			>
+		> InterproceduralStateLattice => default;
 
 		protected MethodBodyScanner (LinkContext context)
 		{
@@ -182,10 +210,10 @@ namespace Mono.Linker.Dataflow
 		{
 			foreach (var keyValuePair in locals) {
 				MultiValue localValue = keyValuePair.Value.Value;
-				VariableDefinition localVariable = keyValuePair.Key;
+				VariableDefinition localVariable = keyValuePair.Key.Local;
 				foreach (var val in localValue) {
 					if (val is LocalVariableReferenceValue reference
-						&& locals[reference.LocalDefinition].Value.Any (v => v is ReferenceValue)) {
+						&& locals.Get (new LocalKey (reference.LocalDefinition)).Value.Any (v => v is ReferenceValue)) {
 						throw new LinkerFatalErrorException (MessageContainer.CreateCustomErrorMessage (
 								$"In method {method.FullName}, local variable {localVariable.Index} references variable {reference.LocalDefinition.Index} which is a reference.",
 								(int) DiagnosticId.LinkerUnexpectedError,
@@ -193,6 +221,43 @@ namespace Mono.Linker.Dataflow
 					}
 				}
 			}
+		}
+
+		protected static void StoreLocalValue<TKey> (
+			ref DefaultValueDictionary<TKey, ValueBasicBlockPair> valueCollection,
+			in MultiValue valueToStore,
+			TKey key,
+			int curBasicBlock
+		) where TKey : IEquatable<TKey>
+		{
+			var existingValue = valueCollection.Get (key);
+			valueCollection.Set (key, new ValueBasicBlockPair (
+				existingValue.BasicBlockIndex switch {
+					int basicBlock when basicBlock == curBasicBlock => valueToStore,
+					-1 => valueToStore,
+					_ => MultiValueLattice.Meet (existingValue.Value, valueToStore)
+				}, curBasicBlock));
+		}
+
+		protected static void StoreMethodLocalValue (
+			ref LocalVariableStore locals,
+			in MultiValue valueToStore,
+			in LocalKey localKey,
+			int curBasicBlock)
+		{
+			var existingValue = locals.Get (localKey);
+			locals.Set (localKey, new ValueBasicBlockPair (
+				existingValue.BasicBlockIndex switch {
+					// If the previous value was stored in the current basic block, then we can safely
+					// overwrite the previous value with the new one.
+					int basicBlock when basicBlock == curBasicBlock => valueToStore,
+					// If we are tracking a default value, also overwrite.
+					-1 => valueToStore,
+					// If the previous value came from a previous basic block, then some other use of
+					// the local could see the previous value, so we must merge the new value with the
+					// old value.
+					_ => MultiValueLattice.Meet (existingValue.Value, valueToStore)
+				}, curBasicBlock));
 		}
 
 		protected static void StoreMethodLocalValue<KeyType> (
@@ -226,20 +291,45 @@ namespace Mono.Linker.Dataflow
 		// reachable from it.
 		public virtual void InterproceduralScan (MethodBody methodBody)
 		{
-			var methodsInGroup = new ValueSet<MethodProxy> (methodBody.Method);
+			// var defaultHoistedLocalStore = new HoistedLocalStore (new ValueBasicBlockPair (new MultiValue(UnknownValue.Instance), -1));
+			// The defaults:
+			// - not compiler-generated. don't track.
+			// - compiler-generated, no captured state.
+			// - captured state, not assigned
+			// - captured state, assigned
+
+			// not-assigned state is irrelevant. we can just use unknownvalue like we do elsewhere.
+			// need to track dictionary
+			// of compiler-generated method (or user method??) -> hoisted locals
+
+			// Default value of a method in the interprocedural state dictionary is null.
+			var interproceduralState = new InterproceduralState (default (Maybe<HoistedLocalState>));
+			interproceduralState.Set (new MethodProxy (methodBody.Method),
+				new (new HoistedLocalState (UnknownValue.Instance)));
+				// new HoistedLocalState (
+				// 	UnknownValue.Instance));
+			// DefaultValueDictionary<MethodProxy, HoistedLocalStore> (defaultHoistedLocalStore);
+			// // At beginning of a 
+			// interproceduralState.Set (new (methodBody.Method), new LocalState<MultiValue> (
+			// 	new DefaultValueDictionary<LocalKey, MultiValue> (
+			// 		new MultiValue (
+			// 			new ConstIntValue (i++)
+			// 		)
+			// 	)
+			// ));
 
 			// Optimization to prevent multiple scans of a method.
 			// Eventually we will need to allow re-scanning in some cases, for example
 			// when we discover new inputs to a method. But we aren't doing dataflow across
 			// lambdas and local functions yet, so no need for now.
-			HashSet<MethodDefinition> scannedMethods = new HashSet<MethodDefinition> ();
+			HashSet<MethodDefinition> scannedMethods = new ();
 
 			while (true) {
 				if (!TryGetNextMethodToScan (out MethodDefinition? methodToScan))
 					break;
 
 				scannedMethods.Add (methodToScan);
-				Scan (methodToScan.Body, ref methodsInGroup);
+				Scan (methodToScan.Body, ref interproceduralState);
 
 				// For state machine methods, also scan the state machine members.
 				// Simplification: assume that all generated methods of the state machine type are
@@ -248,7 +338,7 @@ namespace Mono.Linker.Dataflow
 					foreach (var method in stateMachineType.Methods) {
 						Debug.Assert (!CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name));
 						if (method.Body is MethodBody stateMachineBody)
-							Scan (stateMachineBody, ref methodsInGroup);
+							Scan (stateMachineBody, ref interproceduralState);
 					}
 				}
 			}
@@ -258,17 +348,17 @@ namespace Mono.Linker.Dataflow
 			// are the same set of methods that we discovered and scanned above.
 			if (_context.CompilerGeneratedState.TryGetCompilerGeneratedCalleesForUserMethod (methodBody.Method, out List<IMemberDefinition>? compilerGeneratedCallees)) {
 				var calleeMethods = compilerGeneratedCallees.OfType<MethodDefinition> ();
-				Debug.Assert (methodsInGroup.Count () == 1 + calleeMethods.Count ());
+				Debug.Assert (interproceduralState.Count == 1 + calleeMethods.Count ());
 				foreach (var method in calleeMethods)
-					Debug.Assert (methodsInGroup.Contains (method));
+					Debug.Assert (interproceduralState.Any (kvp => kvp.Key.Method == method));
 			} else {
-				Debug.Assert (methodsInGroup.Count () == 1);
+				Debug.Assert (interproceduralState.Count == 1);
 			}
 #endif
 
 			bool TryGetNextMethodToScan ([NotNullWhen (true)] out MethodDefinition? method)
 			{
-				foreach (var candidate in methodsInGroup) {
+				foreach (var (candidate, _) in interproceduralState) {
 					var candidateMethod = candidate.Method;
 					if (!scannedMethods.Contains (candidateMethod) && candidateMethod.HasBody) {
 						method = candidateMethod;
@@ -280,7 +370,7 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		void TrackNestedFunctionReference (MethodReference referencedMethod, ref ValueSet<MethodProxy> methodsInGroup)
+		void TrackNestedFunctionReference (MethodReference referencedMethod, ref HoistedLocalStore hoistedLocals, ref InterproceduralState interproceduralState)
 		{
 			if (_context.TryResolve (referencedMethod) is not MethodDefinition method)
 				return;
@@ -288,14 +378,46 @@ namespace Mono.Linker.Dataflow
 			if (!CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name))
 				return;
 
-			methodsInGroup = MethodLattice.Meet (methodsInGroup, new (method));
+			var nestedFunctionHoistedLocalState = new HoistedLocalState (defaultValue: UnknownValue.Instance);
+			foreach (var (hoistedLocal, valueBasicBlock) in hoistedLocals)
+				nestedFunctionHoistedLocalState.Set (hoistedLocal, valueBasicBlock.Value);
+			// hoisted locals with default value? does it mean anything?
+			// default value is unknown. keep it like that.
+			// var dictWithNestedFunctionState = new InterproceduralState (
+			var dictWithNestedFunctionState = new InterproceduralState (default (Maybe<HoistedLocalState>));
+
+				// new DefaultValueDictionary<HoistedLocalKey, MultiValue> (
+				// 	UnknownValue.Instance));
+			dictWithNestedFunctionState.Set (new MethodProxy (method), new Maybe<HoistedLocalState> (nestedFunctionHoistedLocalState));
+			// dictWithNestedFunctionState.Set (new (method), nestedFunctionHoistedLocalState);
+			// 	new LocalState<MultiValue> (
+			// 		new DefaultValueDictionary<LocalKey, MultiValue> (
+			// 			new MultiValue (
+			// 				new ConstIntValue (i++)
+			// 			)
+			// 		)
+			// 	)
+			// );
+			interproceduralState = InterproceduralStateLattice.Meet (interproceduralState, dictWithNestedFunctionState);
 		}
 
-		protected virtual void Scan (MethodBody methodBody, ref ValueSet<MethodProxy> methodsInGroup)
+		protected virtual void Scan (MethodBody methodBody, ref InterproceduralState interproceduralState)
 		{
 			MethodDefinition thisMethod = methodBody.Method;
 
-			LocalVariableStore locals = new (methodBody.Variables.Count);
+			// Input uses field -> value
+			// Locals use local -> ValueBasicBlockPair
+			// Here hoisted fields use field -> ValueBasicBlockPair
+
+			// Use -1 as the basic block index for any values we track on entry to the method.
+			var defaultValue = new ValueBasicBlockPair (UnknownValue.Instance, -1);
+			var locals = new LocalVariableStore (defaultValue);
+			var hoistedLocals = new HoistedLocalStore (defaultValue);
+
+			if (interproceduralState.Get (new MethodProxy (methodBody.Method)).MaybeValue is HoistedLocalState hoistedLocalsOnEntry) {
+				foreach (var (hoistedLocal, value) in hoistedLocalsOnEntry)
+					hoistedLocals.Set (hoistedLocal, new ValueBasicBlockPair (value, -1));
+			}
 
 			Dictionary<int, Stack<StackSlot>> knownStacks = new Dictionary<int, Stack<StackSlot>> ();
 			Stack<StackSlot>? currentStack = new Stack<StackSlot> (methodBody.MaxStackSize);
@@ -408,7 +530,7 @@ namespace Mono.Linker.Dataflow
 					break;
 
 				case Code.Ldftn:
-					TrackNestedFunctionReference ((MethodReference) operation.Operand, ref methodsInGroup);
+					TrackNestedFunctionReference ((MethodReference) operation.Operand, ref hoistedLocals, ref interproceduralState);
 					PushUnknown (currentStack);
 					break;
 
@@ -431,7 +553,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Ldloc_S:
 				case Code.Ldloca:
 				case Code.Ldloca_S:
-					ScanLdloc (operation, currentStack, methodBody, locals);
+					ScanLdloc (operation, currentStack, methodBody, ref locals);
 					break;
 
 				case Code.Ldstr: {
@@ -515,7 +637,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Ldsfld:
 				case Code.Ldflda:
 				case Code.Ldsflda:
-					ScanLdfld (operation, currentStack, methodBody);
+					ScanLdfld (operation, currentStack, methodBody, ref hoistedLocals);
 					break;
 
 				case Code.Newarr: {
@@ -559,7 +681,7 @@ namespace Mono.Linker.Dataflow
 
 				case Code.Stfld:
 				case Code.Stsfld:
-					ScanStfld (operation, currentStack, thisMethod, methodBody);
+					ScanStfld (operation, currentStack, thisMethod, methodBody, ref hoistedLocals, curBasicBlock);
 					break;
 
 				case Code.Cpobj:
@@ -575,7 +697,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Stind_R8:
 				case Code.Stind_Ref:
 				case Code.Stobj:
-					ScanIndirectStore (operation, currentStack, methodBody, locals, curBasicBlock);
+					ScanIndirectStore (operation, currentStack, methodBody, ref locals, curBasicBlock);
 					break;
 
 				case Code.Initobj:
@@ -594,7 +716,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Stloc_1:
 				case Code.Stloc_2:
 				case Code.Stloc_3:
-					ScanStloc (operation, currentStack, methodBody, locals, curBasicBlock);
+					ScanStloc (operation, currentStack, methodBody, ref locals, curBasicBlock);
 					break;
 
 				case Code.Constrained:
@@ -634,8 +756,8 @@ namespace Mono.Linker.Dataflow
 				case Code.Call:
 				case Code.Callvirt:
 				case Code.Newobj:
-					TrackNestedFunctionReference ((MethodReference) operation.Operand, ref methodsInGroup);
-					HandleCall (methodBody, operation, currentStack, locals, curBasicBlock);
+					TrackNestedFunctionReference ((MethodReference) operation.Operand, ref hoistedLocals, ref interproceduralState);
+					HandleCall (methodBody, operation, currentStack, ref locals, ref hoistedLocals, curBasicBlock);
 					break;
 
 				case Code.Jmp:
@@ -672,7 +794,7 @@ namespace Mono.Linker.Dataflow
 							StackSlot retValue = PopUnknown (currentStack, 1, methodBody, operation.Offset);
 							// If the return value is a reference, treat it as the value itself for now
 							//	We can handle ref return values better later
-							ReturnValue = MultiValueLattice.Meet (ReturnValue, DereferenceValue (retValue.Value, locals));
+							ReturnValue = MultiValueLattice.Meet (ReturnValue, DereferenceValue (retValue.Value, ref locals, ref hoistedLocals));
 						}
 						ClearStack (ref currentStack);
 						break;
@@ -799,7 +921,7 @@ namespace Mono.Linker.Dataflow
 			Instruction operation,
 			Stack<StackSlot> currentStack,
 			MethodBody methodBody,
-			LocalVariableStore locals)
+			ref LocalVariableStore locals)
 		{
 			VariableDefinition localDef = GetLocalDef (operation, methodBody.Variables);
 			if (localDef == null) {
@@ -809,14 +931,11 @@ namespace Mono.Linker.Dataflow
 
 			bool isByRef = operation.OpCode.Code == Code.Ldloca || operation.OpCode.Code == Code.Ldloca_S;
 
-			StackSlot newSlot;
-			if (isByRef) {
-				newSlot = new StackSlot (new LocalVariableReferenceValue (localDef));
-			} else if (locals.TryGetValue (localDef, out ValueBasicBlockPair localValue))
-				newSlot = new StackSlot (localValue.Value);
-			else
-				newSlot = new StackSlot (UnknownValue.Instance);
-			currentStack.Push (newSlot);
+			currentStack.Push (new StackSlot (
+				isByRef
+					? new LocalVariableReferenceValue (localDef)
+					: locals.Get (new LocalKey(localDef)).Value
+			));
 		}
 
 		void ScanLdtoken (Instruction operation, Stack<StackSlot> currentStack)
@@ -862,7 +981,7 @@ namespace Mono.Linker.Dataflow
 			Instruction operation,
 			Stack<StackSlot> currentStack,
 			MethodBody methodBody,
-			LocalVariableStore locals,
+			ref LocalVariableStore locals,
 			int curBasicBlock)
 		{
 			StackSlot valueToStore = PopUnknown (currentStack, 1, methodBody, operation.Offset);
@@ -872,20 +991,20 @@ namespace Mono.Linker.Dataflow
 				return;
 			}
 
-			StoreMethodLocalValue (locals, valueToStore.Value, localDef, curBasicBlock);
+			StoreLocalValue<LocalKey> (ref locals, valueToStore.Value, new (localDef), curBasicBlock);
 		}
 
 		private void ScanIndirectStore (
 			Instruction operation,
 			Stack<StackSlot> currentStack,
 			MethodBody methodBody,
-			LocalVariableStore locals,
+			ref LocalVariableStore locals,
 			int curBasicBlock)
 		{
 			StackSlot valueToStore = PopUnknown (currentStack, 1, methodBody, operation.Offset);
 			StackSlot destination = PopUnknown (currentStack, 1, methodBody, operation.Offset);
 
-			StoreInReference (destination.Value, valueToStore.Value, methodBody.Method, operation, locals, curBasicBlock);
+			StoreInReference (destination.Value, valueToStore.Value, methodBody.Method, operation, ref locals, curBasicBlock);
 		}
 
 		/// <summary>
@@ -896,12 +1015,12 @@ namespace Mono.Linker.Dataflow
 		/// <param name="method">The method body that contains the operation causing the store</param>
 		/// <param name="operation">The instruction causing the store</param>
 		/// <exception cref="LinkerFatalErrorException">Throws if <paramref name="target"/> is not a valid target for an indirect store.</exception>
-		protected void StoreInReference (MultiValue target, MultiValue source, MethodDefinition method, Instruction operation, LocalVariableStore locals, int curBasicBlock)
+		protected void StoreInReference (MultiValue target, MultiValue source, MethodDefinition method, Instruction operation, ref LocalVariableStore locals, int curBasicBlock)
 		{
 			foreach (var value in target) {
 				switch (value) {
 				case LocalVariableReferenceValue localReference:
-					StoreMethodLocalValue (locals, source, localReference.LocalDefinition, curBasicBlock);
+					StoreLocalValue (ref locals, source, new (localReference.LocalDefinition), curBasicBlock);
 					break;
 				case FieldReferenceValue fieldReference
 				when GetFieldValue (fieldReference.FieldDefinition).AsSingleValue () is FieldValue fieldValue:
@@ -937,7 +1056,8 @@ namespace Mono.Linker.Dataflow
 		private void ScanLdfld (
 			Instruction operation,
 			Stack<StackSlot> currentStack,
-			MethodBody methodBody)
+			MethodBody methodBody,
+			ref HoistedLocalStore hoistedLocals)
 		{
 			Code code = operation.OpCode.Code;
 			if (code == Code.Ldfld || code == Code.Ldflda)
@@ -946,16 +1066,35 @@ namespace Mono.Linker.Dataflow
 			bool isByRef = code == Code.Ldflda || code == Code.Ldsflda;
 
 			FieldDefinition? field = _context.TryResolve ((FieldReference) operation.Operand);
-			if (field != null) {
-				MultiValue newValue = isByRef ?
-					new FieldReferenceValue (field)
-					: GetFieldValue (field);
-				StackSlot slot = new (newValue);
-				currentStack.Push (slot);
+			if (field == null) {
+				PushUnknown (currentStack);
 				return;
 			}
 
-			PushUnknown (currentStack);
+			// // When would we ever load a compiler-generated field byref?
+			// if (CompilerGeneratedState.IsHoistedLocal (field))
+			// 	Debug.Assert (!isByRef);
+			MultiValue value;
+			if (isByRef) {
+				value = new FieldReferenceValue (field);
+			} else if (CompilerGeneratedState.IsHoistedLocal (field)) {
+				value = hoistedLocals.Get (new HoistedLocalKey (field)).Value;
+			} else {
+				value = GetFieldValue (field);
+			}
+			currentStack.Push (new StackSlot (value));
+
+			// if (isByRef) {
+			// 	currentStack.Push (new StackSlot (new FieldReferenceValue (field)));
+			// 	return;
+			// }
+
+			// if (CompilerGeneratedState.IsHoistedLocal (field)) {
+			// 	currentStack.Push (new StackSlot (hoistedLocals.Get (new HoistedLocalKey (field)).Value));
+			// 	return;
+			// }
+
+			// currentStack.Push (new StackSlot (GetFieldValue (field)));
 		}
 
 		protected virtual void HandleStoreField (MethodDefinition method, FieldValue field, Instruction operation, MultiValue valueToStore)
@@ -978,7 +1117,9 @@ namespace Mono.Linker.Dataflow
 			Instruction operation,
 			Stack<StackSlot> currentStack,
 			MethodDefinition thisMethod,
-			MethodBody methodBody)
+			MethodBody methodBody,
+			ref HoistedLocalStore hoistedLocals,
+			int curBasicBlock)
 		{
 			StackSlot valueToStoreSlot = PopUnknown (currentStack, 1, methodBody, operation.Offset);
 			if (operation.OpCode.Code == Code.Stfld)
@@ -986,6 +1127,19 @@ namespace Mono.Linker.Dataflow
 
 			FieldDefinition? field = _context.TryResolve ((FieldReference) operation.Operand);
 			if (field != null) {
+				if (CompilerGeneratedState.IsHoistedLocal (field)) {
+					// Treat these like locals. Basically like StoreMethodLocalValue.
+					// If the field is really a hoisted parameter... then we shouldn't allow assignments.
+					// If it is assigned a method parameter value... then...
+
+					// No simple way to detect whether this hoisted local represents a parameter or a local variable.
+					// Because parameters get assigned to the hoisted local, but the same could be true of local variables.
+					// So allow mutating hoisted locals even if they represent parameters in source.
+					// Eventually we could lift the restriction on parameters in general to make this more consistent.
+					StoreLocalValue (ref hoistedLocals, valueToStoreSlot.Value, new HoistedLocalKey (field), curBasicBlock);
+					return;
+				}
+
 				foreach (var value in GetFieldValue (field)) {
 					// GetFieldValue may return different node types, in which case they can't be stored to.
 					// At least not yet.
@@ -1036,33 +1190,23 @@ namespace Mono.Linker.Dataflow
 			return methodParams;
 		}
 
-		internal MultiValue DereferenceValue (MultiValue maybeReferenceValue, Dictionary<VariableDefinition, ValueBasicBlockPair> locals)
+		internal MultiValue DereferenceValue (MultiValue maybeReferenceValue, ref LocalVariableStore locals, ref HoistedLocalStore hoistedLocals)
 		{
 			MultiValue dereferencedValue = MultiValueLattice.Top;
 			foreach (var value in maybeReferenceValue) {
-				switch (value) {
-				case FieldReferenceValue fieldReferenceValue:
-					dereferencedValue = MultiValue.Meet (
-						dereferencedValue,
-						GetFieldValue (fieldReferenceValue.FieldDefinition));
-					break;
-				case ParameterReferenceValue parameterReferenceValue:
-					dereferencedValue = MultiValue.Meet (
-						dereferencedValue,
-						GetMethodParameterValue (parameterReferenceValue.MethodDefinition, parameterReferenceValue.ParameterIndex));
-					break;
-				case LocalVariableReferenceValue localVariableReferenceValue:
-					if (locals.TryGetValue (localVariableReferenceValue.LocalDefinition, out var valueBasicBlockPair))
-						dereferencedValue = MultiValue.Meet (dereferencedValue, valueBasicBlockPair.Value);
-					else
-						dereferencedValue = MultiValue.Meet (dereferencedValue, UnknownValue.Instance);
-					break;
-				case ReferenceValue referenceValue:
-					throw new NotImplementedException ($"Unhandled dereference of ReferenceValue of type {referenceValue.GetType ().FullName}");
-				default:
-					dereferencedValue = MultiValue.Meet (dereferencedValue, value);
-					break;
-				}
+				dereferencedValue = MultiValue.Meet (dereferencedValue, value switch {
+					FieldReferenceValue fieldReferenceValue
+						=> CompilerGeneratedState.IsHoistedLocal (fieldReferenceValue.FieldDefinition)
+							? hoistedLocals.Get (new HoistedLocalKey (fieldReferenceValue.FieldDefinition)).Value
+							: GetFieldValue (fieldReferenceValue.FieldDefinition),
+					ParameterReferenceValue parameterReferenceValue
+						=> GetMethodParameterValue (parameterReferenceValue.MethodDefinition, parameterReferenceValue.ParameterIndex),
+					LocalVariableReferenceValue localVariableReferenceValue
+						=> locals.Get (new (localVariableReferenceValue.LocalDefinition)).Value,
+					ReferenceValue referenceValue
+						=> throw new NotImplementedException ($"Unhandled dereference of ReferenceValue of type {referenceValue.GetType ().FullName}"),
+					_ => value
+				});
 			}
 			return dereferencedValue;
 		}
@@ -1075,7 +1219,7 @@ namespace Mono.Linker.Dataflow
 			MethodReference calledMethod,
 			ValueNodeList methodArguments,
 			Instruction operation,
-			LocalVariableStore locals,
+			ref LocalVariableStore locals,
 			int curBasicBlock)
 		{
 			MethodDefinition? calledMethodDefinition = _context.Resolve (calledMethod);
@@ -1088,7 +1232,7 @@ namespace Mono.Linker.Dataflow
 				SingleValue newByRefValue = methodIsResolved
 					? _context.Annotations.FlowAnnotations.GetMethodParameterValue (calledMethodDefinition!, parameterIndex)
 					: UnknownValue.Instance;
-				StoreInReference (methodArguments[ilArgumentIndex], newByRefValue, callingMethodBody.Method, operation, locals, curBasicBlock);
+				StoreInReference (methodArguments[ilArgumentIndex], newByRefValue, callingMethodBody.Method, operation, ref locals, curBasicBlock);
 			}
 		}
 
@@ -1096,7 +1240,8 @@ namespace Mono.Linker.Dataflow
 			MethodBody callingMethodBody,
 			Instruction operation,
 			Stack<StackSlot> currentStack,
-			LocalVariableStore locals,
+			ref LocalVariableStore locals,
+			ref HoistedLocalStore hoistedLocals,
 			int curBasicBlock)
 		{
 			MethodReference calledMethod = (MethodReference) operation.Operand;
@@ -1106,7 +1251,10 @@ namespace Mono.Linker.Dataflow
 			SingleValue? newObjValue;
 			ValueNodeList methodArguments = PopCallArguments (currentStack, calledMethod, callingMethodBody, isNewObj,
 														   operation.Offset, out newObjValue);
-			ValueNodeList dereferencedMethodParams = new (methodArguments.Select (param => DereferenceValue (param, locals)).ToList ());
+			var dereferencedParamsList = new List<MultiValue> ();
+			foreach (var argument in methodArguments)
+				dereferencedParamsList.Add (DereferenceValue (argument, ref locals, ref hoistedLocals));
+			ValueNodeList dereferencedMethodParams = new (dereferencedParamsList);
 			MultiValue methodReturnValue;
 			bool handledFunction = HandleCall (
 				callingMethodBody,
@@ -1132,7 +1280,7 @@ namespace Mono.Linker.Dataflow
 			if (isNewObj || !calledMethod.ReturnsVoid ())
 				currentStack.Push (new StackSlot (methodReturnValue));
 
-			AssignRefAndOutParameters (callingMethodBody, calledMethod, methodArguments, operation, locals, curBasicBlock);
+			AssignRefAndOutParameters (callingMethodBody, calledMethod, methodArguments, operation, ref locals, curBasicBlock);
 
 			foreach (var param in methodArguments) {
 				foreach (var v in param) {
