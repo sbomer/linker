@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using ILLink.Shared;
+using ILLink.Shared.DataFlow;
 using ILLink.Shared.TrimAnalysis;
 using ILLink.Shared.TypeSystemProxy;
 using Mono.Cecil;
@@ -252,7 +253,6 @@ namespace Mono.Linker.Dataflow
 			case IntrinsicId.Assembly_CreateInstance: {
 					return handleCallAction.Invoke (calledMethodDefinition, instanceValue, argumentValues, out methodReturnValue, out _);
 				}
-
 			case IntrinsicId.None: {
 					if (calledMethodDefinition.IsPInvokeImpl) {
 						// Is the PInvoke dangerous?
@@ -347,6 +347,42 @@ namespace Mono.Linker.Dataflow
 							AddReturnValue (context.Annotations.FlowAnnotations.GetMethodReturnValue (calledMethodDefinition, annotation));
 						}
 					}
+				}
+				break;
+
+			case IntrinsicId.Delegate_Ctor: {
+					// This is an identity function for analysis purposes
+					if (operation.OpCode == OpCodes.Newobj)
+						AddReturnValue (argumentValues[1]);
+				}
+				break;
+
+			case IntrinsicId.Delegate_Invoke: {
+					foreach (var valueNode in instanceValue) {
+						if (valueNode is not LambdaValue lambdaValue) {
+							throw new NotImplementedException ();
+						}
+
+						// Instance is the delegate.
+						// Arguments are the arguments.
+						// We have lost the "this" instance captured by the delegate, if it referenced an instance method.
+						var capturedInstance = NullValue.Instance;
+
+						// TODO: do we need to assign ref and out parameters?
+						// What should happen with the return value?
+						HandleCall (
+							operation,
+							lambdaValue.Method.Method, // TODO: generics?
+							capturedInstance, // TODO: save captured instance in the delegate. do we need to for CGC?
+							argumentValues, // arg values should match the signature of the delegate already.
+							diagnosticContext,
+							reflectionMarker,
+							context,
+							markStep,
+							out MultiValue returnValue);
+
+						AddReturnValue (returnValue);
+ 					}
 				}
 				break;
 

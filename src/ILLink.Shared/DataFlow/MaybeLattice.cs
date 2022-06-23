@@ -5,6 +5,9 @@ using System;
 
 namespace ILLink.Shared.DataFlow
 {
+	// This is just a wrapper for a nullable type, used to implement IEquatable so that it
+	// can be used as the type of a lattice value. We need a wrapper because nullable types can't satisfy
+	// interface constraints (see for example https://docs.microsoft.com/dotnet/csharp/misc/cs0313).
 	struct Maybe<T> : IEquatable<Maybe<T>>
 		where T : struct, IEquatable<T>
 	{

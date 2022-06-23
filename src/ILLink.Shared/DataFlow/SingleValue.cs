@@ -14,7 +14,7 @@ namespace ILLink.Shared.DataFlow
 
 	public abstract record SingleValue : IDeepCopyValue<SingleValue>
 	{
-		// All values must explicitely declare their ability to deep copy itself.
+		// All values must explicitly declare their ability to deep copy itself.
 		// If the value is immutable, it can "return this" as an optimization.
 		// Note: Since immutability is relatively tricky to determine, we require all values
 		//       to explicitly implement the DeepCopy, even though the expectation is that

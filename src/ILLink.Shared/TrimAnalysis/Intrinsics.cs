@@ -372,6 +372,13 @@ namespace ILLink.Shared.TrimAnalysis
 					&& calledMethod.IsStatic ()
 					=> IntrinsicId.Nullable_GetUnderlyingType,
 
+				".ctor" when calledMethod.IsDeclaredOnType ("System.Action")
+					|| calledMethod.IsDeclaredOnType ("System.Func")
+					=> IntrinsicId.Delegate_Ctor,
+
+				"Invoke" when calledMethod.IsDeclaredOnType ("System.Action")
+					=> IntrinsicId.Delegate_Invoke,
+
 				_ => IntrinsicId.None,
 			};
 		}

@@ -304,13 +304,13 @@ namespace Mono.Linker.Dataflow
 #endif
 		}
 
-		void TrackNestedFunctionReference (MethodReference referencedMethod, ref HoistedLocalStore hoistedLocals, ref InterproceduralState interproceduralState)
+		SingleValue TrackNestedFunctionReference (MethodReference referencedMethod, ref HoistedLocalStore hoistedLocals, ref InterproceduralState interproceduralState)
 		{
 			if (_context.TryResolve (referencedMethod) is not MethodDefinition method)
-				return;
+				return UnknownValue.Instance;
 
 			if (!CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name))
-				return;
+				return UnknownValue.Instance;
 
 			// On entry to a nested function, save the current state of hoisted locals (which might be accessed
 			// by the nested function). Note that the input HoistedLocalStore stores ValueBasicBlockPairs for the
@@ -325,6 +325,8 @@ namespace Mono.Linker.Dataflow
 				InterproceduralStateLattice.ValueLattice.Meet (
 					interproceduralState.Get (new MethodProxy (method)),
 					new Maybe<HoistedLocalState> (nestedFunctionHoistedLocalState)));
+
+			return new LambdaValue (new MethodProxy (method));
 		}
 
 		protected virtual void Scan (MethodBody methodBody, ref InterproceduralState interproceduralState)
@@ -452,8 +454,9 @@ namespace Mono.Linker.Dataflow
 					break;
 
 				case Code.Ldftn:
-					TrackNestedFunctionReference ((MethodReference) operation.Operand, ref hoistedLocals, ref interproceduralState);
-					PushUnknown (currentStack);
+					currentStack.Push (new StackSlot (
+						TrackNestedFunctionReference ((MethodReference) operation.Operand, ref hoistedLocals, ref interproceduralState)
+					));
 					break;
 
 				case Code.Ldarg:
@@ -678,7 +681,6 @@ namespace Mono.Linker.Dataflow
 				case Code.Call:
 				case Code.Callvirt:
 				case Code.Newobj:
-					TrackNestedFunctionReference ((MethodReference) operation.Operand, ref hoistedLocals, ref interproceduralState);
 					HandleCall (methodBody, operation, currentStack, locals, ref hoistedLocals, curBasicBlock);
 					break;
 
