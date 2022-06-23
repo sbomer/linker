@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using ILLink.Shared;
@@ -304,7 +305,7 @@ namespace Mono.Linker.Dataflow
 #endif
 		}
 
-		SingleValue TrackNestedFunctionReference (MethodReference referencedMethod, ref HoistedLocalStore hoistedLocals, ref InterproceduralState interproceduralState)
+		protected SingleValue TrackNestedFunctionReference (MethodReference referencedMethod, ref HoistedLocalStore hoistedLocals, ref InterproceduralState interproceduralState)
 		{
 			if (_context.TryResolve (referencedMethod) is not MethodDefinition method)
 				return UnknownValue.Instance;
@@ -681,7 +682,7 @@ namespace Mono.Linker.Dataflow
 				case Code.Call:
 				case Code.Callvirt:
 				case Code.Newobj:
-					HandleCall (methodBody, operation, currentStack, locals, ref hoistedLocals, curBasicBlock);
+					HandleCallWithStack (methodBody, operation, currentStack, locals, ref hoistedLocals, curBasicBlock);
 					break;
 
 				case Code.Jmp:
@@ -1156,7 +1157,32 @@ namespace Mono.Linker.Dataflow
 			}
 		}
 
-		private void HandleCall (
+		static void GetInstanceAndArguments (
+			MethodDefinition calledMethod,
+			List<MultiValue> argumentsWithThis,
+			out MultiValue instanceValue,
+			out ImmutableArray<MultiValue> arguments)
+		{
+			if (calledMethod.HasImplicitThis ()) {
+				instanceValue = argumentsWithThis[0];
+				arguments = argumentsWithThis.Skip (1).ToImmutableArray ();
+			} else {
+				instanceValue = MultiValueLattice.Top;
+				arguments = argumentsWithThis.ToImmutableArray ();
+			}
+		}
+
+		static bool IsDelegateInvocation (MethodDefinition method) {
+			// TODO: compiler-generated delegate type with ref and out params?
+			if (method.Name is "Invoke" && (method.IsDeclaredOnType ("System.Action") || method.IsDeclaredOnType ("System.Delegate"))) {
+				// return (lambdaValue = instanceValue as LambdaValue) != null;
+				return true;
+			}
+			
+			return false;
+		}
+
+		private void HandleCallWithStack (
 			MethodBody callingMethodBody,
 			Instruction operation,
 			Stack<StackSlot> currentStack,
@@ -1174,13 +1200,54 @@ namespace Mono.Linker.Dataflow
 			var dereferencedMethodParams = new List<MultiValue> ();
 			foreach (var argument in methodArguments)
 				dereferencedMethodParams.Add (DereferenceValue (argument, locals, ref hoistedLocals));
-			MultiValue methodReturnValue;
-			bool handledFunction = HandleCall (
+
+			var calledMethodDefinition = _context.TryResolve (calledMethod);
+			if (calledMethodDefinition == null)
+				return;
+
+			GetInstanceAndArguments (
+				calledMethodDefinition,
+				dereferencedMethodParams,
+				out MultiValue instanceValue,
+				out ImmutableArray<MultiValue> arguments);
+
+			// Unwrap delegate invocation.
+			if (IsDelegateInvocation (calledMethodDefinition)) {
+
+				MultiValue returnValue = MultiValueLattice.Top;
+				bool anyUnknownDelegates = false;
+				foreach (var valueNode in instanceValue) {
+					if (valueNode is not LambdaValue lambdaValue) {
+						// We can get here with UnknownValue when loading a delegate cache field.
+						// Just skip these - they shouldn't warn. The delegate cache fields can
+						// only be assigned the lambda that we are tracking.
+						// throw new NotImplementedException ();
+						anyUnknownDelegates = true;
+						continue;
+					}
+
+					// TODO: We have lost the "this" instance captured by the delegate, if it referenced
+					// an instance method.
+					var capturedInstance = NullValue.Instance;
+
+					RecordCallPatternAndHandleCall (
+						callingMethodBody,
+						lambdaValue.Method,
+						operation,
+						in capturedInstance,
+						in arguments, // arg values already match the delegate signature.
+						out MultiValue methodReturnvalue
+					);
+				}
+			}
+
+			bool handledFunction = RecordCallPatternAndHandleCall (
 				callingMethodBody,
 				calledMethod,
 				operation,
-				new ValueNodeList (dereferencedMethodParams),
-				out methodReturnValue);
+				in instanceValue,
+				in arguments,
+				out MultiValue methodReturnValue);
 
 			// Handle the return value or newobj result
 			if (!handledFunction) {
@@ -1212,11 +1279,12 @@ namespace Mono.Linker.Dataflow
 
 		public TypeDefinition? ResolveToTypeDefinition (TypeReference typeReference) => typeReference.ResolveToTypeDefinition (_context);
 
-		public abstract bool HandleCall (
+		public abstract bool RecordCallPatternAndHandleCall (
 			MethodBody callingMethodBody,
 			MethodReference calledMethod,
 			Instruction operation,
-			ValueNodeList methodParams,
+			in MultiValue instanceValue,
+			in ImmutableArray<MultiValue> arguments,
 			out MultiValue methodReturnValue);
 
 		// Limit tracking array values to 32 values for performance reasons. There are many arrays much longer than 32 elements in .NET, but the interesting ones for the linker are nearly always less than 32 elements.

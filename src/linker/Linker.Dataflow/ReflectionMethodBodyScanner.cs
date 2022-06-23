@@ -136,7 +136,13 @@ namespace Mono.Linker.Dataflow
 		protected override void HandleStoreMethodReturnValue (MethodDefinition method, MethodReturnValue returnValue, Instruction operation, MultiValue valueToStore)
 			=> HandleStoreValueWithDynamicallyAccessedMembers (returnValue, operation, valueToStore);
 
-		public override bool HandleCall (MethodBody callingMethodBody, MethodReference calledMethod, Instruction operation, ValueNodeList methodParams, out MultiValue methodReturnValue)
+		public override bool RecordCallPatternAndHandleCall (
+			MethodBody callingMethodBody,
+			MethodReference calledMethod,
+			Instruction operation,
+			in MultiValue instanceValue,
+			in ImmutableArray<MultiValue> arguments,
+			out MultiValue methodReturnValue)
 		{
 			methodReturnValue = new ();
 
@@ -145,22 +151,13 @@ namespace Mono.Linker.Dataflow
 				return false;
 
 			Debug.Assert (callingMethodBody.Method == _origin.Provider);
-			var calledMethodDefinition = _context.TryResolve (calledMethod);
-			if (calledMethodDefinition == null)
-				return false;
 
 			_origin = _origin.WithInstructionOffset (operation.Offset);
 
-			MultiValue instanceValue;
-			ImmutableArray<MultiValue> arguments;
-			if (calledMethodDefinition.HasImplicitThis ()) {
-				instanceValue = methodParams[0];
-				arguments = methodParams.Skip (1).ToImmutableArray ();
-			} else {
-				instanceValue = MultiValueLattice.Top;
-				arguments = methodParams.ToImmutableArray ();
-			}
-
+			// Recording the call pattern should NOT record the call to Delegate.Invoke.
+			// We don't want to track the state on entry to the delegate call each time, only
+			// during the analysis pass. So by the time we record patterns, the delegate invocation
+			// must already be unwrapped.
 			TrimAnalysisPatterns.Add (new TrimAnalysisMethodCallPattern (
 				operation,
 				calledMethod,
@@ -170,7 +167,7 @@ namespace Mono.Linker.Dataflow
 			));
 
 			var diagnosticContext = new DiagnosticContext (_origin, diagnosticsEnabled: false, _context);
-			return HandleCall (
+			return HandleCallWithDiagnosticContext (
 				operation,
 				calledMethod,
 				instanceValue,
@@ -182,7 +179,7 @@ namespace Mono.Linker.Dataflow
 				out methodReturnValue);
 		}
 
-		public static bool HandleCall (
+		public static bool HandleCallWithDiagnosticContext (
 			Instruction operation,
 			MethodReference calledMethod,
 			MultiValue instanceValue,
@@ -358,9 +355,9 @@ namespace Mono.Linker.Dataflow
 				break;
 
 			case IntrinsicId.Delegate_Invoke: {
+
 					foreach (var valueNode in instanceValue) {
 						if (valueNode is not LambdaValue lambdaValue) {
-							throw new NotImplementedException ();
 						}
 
 						// Instance is the delegate.
@@ -368,9 +365,11 @@ namespace Mono.Linker.Dataflow
 						// We have lost the "this" instance captured by the delegate, if it referenced an instance method.
 						var capturedInstance = NullValue.Instance;
 
-						// TODO: do we need to assign ref and out parameters?
-						// What should happen with the return value?
-						HandleCall (
+						// For ref and out params, the original call to Delegate.Invoke
+						// will handle dereferencing the arguments, and assigning ref and out params.
+						// We don't need to do any of that again here. But we just need to make sure the
+						// return value gets returned.
+						HandleCallWithDiagnosticContext (
 							operation,
 							lambdaValue.Method.Method, // TODO: generics?
 							capturedInstance, // TODO: save captured instance in the delegate. do we need to for CGC?

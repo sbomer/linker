@@ -25,15 +25,18 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 		{
 			static void WarningsInBody ()
 			{
+				
+				Type t = GetAll ();
+
 				var lambda =
 					[ExpectedWarning ("IL2072", nameof (GetWithPublicMethods), nameof (DataFlowTypeExtensions.RequiresAll),
 					ProducedBy = ProducedBy.Trimmer)]
 				() => {
-					Type t = GetWithPublicMethods ();
 					t.RequiresAll ();
 				};
 
-				lambda ();
+				t = GetWithPublicMethods ();
+				lambda();
 			}
 
 			public static void Test ()
