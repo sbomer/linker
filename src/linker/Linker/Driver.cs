@@ -1407,8 +1407,11 @@ namespace Mono.Linker
 			p.AppendStep (new ValidateVirtualMethodAnnotationsStep ());
 			p.AppendStep (new ProcessWarningsStep ());
 			p.AppendStep (new OutputWarningSuppressions ());
-			p.AppendStep (new SweepStep ());
 			p.AppendStep (new CheckSuppressionsDispatcher ());
+			p.AppendStep (new SweepStep ());
+			// Sweepstep detaches unused types from their modules, so
+			// any following steps should be able to operate on detached types
+			// (and should probably not use cached types from previous steps).
 			p.AppendStep (new CodeRewriterStep ());
 			p.AppendStep (new CleanStep ());
 			p.AppendStep (new RegenerateGuidStep ());
