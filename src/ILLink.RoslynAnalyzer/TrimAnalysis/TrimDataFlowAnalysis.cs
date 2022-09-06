@@ -11,20 +11,22 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.FlowAnalysis;
-using LocalStateValue = ILLink.RoslynAnalyzer.DataFlow.LocalState<
-	ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>>;
+using LocalStateValue = ILLink.RoslynAnalyzer.DataFlow.LocalContextState<
+	ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>,
+	ILLink.RoslynAnalyzer.DataFlow.FeatureContext
+>;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
-	public class TrimDataFlowAnalysis : LocalDataFlowAnalysis<MultiValue, ValueSetLattice<SingleValue>, TrimAnalysisVisitor>
+	public class TrimDataFlowAnalysis : LocalDataFlowAnalysis<MultiValue, FeatureContext, ValueSetLattice<SingleValue>, FeatureContextLattice, TrimAnalysisVisitor>
 	{
 		public TrimAnalysisPatternStore TrimAnalysisPatterns { get; }
 
 		public TrimDataFlowAnalysis (OperationBlockAnalysisContext context, IOperation operationBlock)
 			: base (context, operationBlock)
 		{
-			TrimAnalysisPatterns = new TrimAnalysisPatternStore (Lattice.Lattice.ValueLattice);
+			TrimAnalysisPatterns = new TrimAnalysisPatternStore (Lattice.LocalStateLattice.Lattice.ValueLattice);
 		}
 
 		protected override TrimAnalysisVisitor GetVisitor (

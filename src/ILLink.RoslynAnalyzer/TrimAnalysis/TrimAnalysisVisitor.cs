@@ -15,12 +15,14 @@ using Microsoft.CodeAnalysis.Operations;
 using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 using StateValue = ILLink.RoslynAnalyzer.DataFlow.LocalDataFlowState<
 	ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>,
-	ILLink.Shared.DataFlow.ValueSetLattice<ILLink.Shared.DataFlow.SingleValue>
+	ILLink.RoslynAnalyzer.DataFlow.FeatureContext,
+	ILLink.Shared.DataFlow.ValueSetLattice<ILLink.Shared.DataFlow.SingleValue>,
+	ILLink.RoslynAnalyzer.DataFlow.FeatureContextLattice
 	>;
 
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
-	public class TrimAnalysisVisitor : LocalDataFlowVisitor<MultiValue, ValueSetLattice<SingleValue>>
+	public class TrimAnalysisVisitor : LocalDataFlowVisitor<MultiValue, FeatureContext, ValueSetLattice<SingleValue>, FeatureContextLattice>
 	{
 		public readonly TrimAnalysisPatternStore TrimAnalysisPatterns;
 
@@ -32,7 +34,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		const int MaxTrackedArrayValues = 32;
 
 		public TrimAnalysisVisitor (
-			LocalStateLattice<MultiValue, ValueSetLattice<SingleValue>> lattice,
+			LocalContextLattice<MultiValue, FeatureContext, ValueSetLattice<SingleValue>, FeatureContextLattice> lattice,
 			IMethodSymbol method,
 			ControlFlowGraph methodCFG,
 			ImmutableDictionary<CaptureId, FlowCaptureKind> lValueFlowCaptures,
@@ -40,7 +42,7 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			InterproceduralState<MultiValue, ValueSetLattice<SingleValue>> interproceduralState
 		) : base (lattice, method, methodCFG, lValueFlowCaptures, interproceduralState)
 		{
-			_multiValueLattice = lattice.Lattice.ValueLattice;
+			_multiValueLattice = lattice.LocalStateLattice.Lattice.ValueLattice;
 			TrimAnalysisPatterns = trimAnalysisPatterns;
 		}
 

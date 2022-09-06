@@ -15,21 +15,23 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 	// It substitutes type arguments into the generic forward dataflow analysis,
 	// creating a simpler abstraction that can track the values of local variables using Roslyn APIs.
 	// The kinds of values tracked are still left as unspecified generic parameters TValue and TLattice.
-	public abstract class LocalDataFlowAnalysis<TValue, TLattice, TTransfer>
+	public abstract class LocalDataFlowAnalysis<TValue, TContext, TLattice, TContextLattice, TTransfer>
 		: ForwardDataFlowAnalysis<
-			LocalState<TValue>,
-			LocalDataFlowState<TValue, TLattice>,
-			LocalStateLattice<TValue, TLattice>,
+			LocalContextState<TValue, TContext>,
+			LocalDataFlowState<TValue, TContext, TLattice, TContextLattice>,
+			LocalContextLattice<TValue, TContext, TLattice, TContextLattice>,
 			BlockProxy,
 			RegionProxy,
 			ControlFlowGraphProxy,
 			TTransfer
 		>
 		where TValue : struct, IEquatable<TValue>
+		where TContext : struct, IEquatable<TContext>
 		where TLattice : ILattice<TValue>, new()
-		where TTransfer : LocalDataFlowVisitor<TValue, TLattice>
+		where TContextLattice : ILattice<TContext>, new()
+		where TTransfer : LocalDataFlowVisitor<TValue, TContext, TLattice, TContextLattice>
 	{
-		protected readonly LocalStateLattice<TValue, TLattice> Lattice;
+		protected readonly LocalContextLattice<TValue, TContext, TLattice, TContextLattice> Lattice;
 
 		protected readonly OperationBlockAnalysisContext Context;
 
@@ -37,7 +39,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 
 		protected LocalDataFlowAnalysis (OperationBlockAnalysisContext context, IOperation operationBlock)
 		{
-			Lattice = new (new TLattice ());
+			Lattice = new (new (new TLattice ()), new TContextLattice ());
 			Context = context;
 			OperationBlock = operationBlock;
 		}
