@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using Mono.Linker;
 using NUnit.Framework;
 
 namespace Mono.Linker.Tests
@@ -113,7 +114,7 @@ b" });
 		{
 			var result = new Queue<string> ();
 			using (var reader = new StringReader (v1))
-				Driver.ParseResponseFile (reader, result);
+				ArgumentProcessor.ParseResponseFile (reader, result);
 			Assert.That (result, Is.EquivalentTo (v2));
 		}
 	}

@@ -31,6 +31,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -63,7 +64,7 @@ namespace Mono.Linker
 		TypeDefinition? TryResolve (TypeReference typeReference);
 	}
 
-	public class LinkContext : IMetadataResolver, ITryResolveMetadata, IDisposable
+	public class LinkContext : LinkerOptions, IMetadataResolver, ITryResolveMetadata, IDisposable
 	{
 
 		readonly Pipeline _pipeline;
@@ -95,51 +96,17 @@ namespace Mono.Linker
 
 		public int ErrorsCount { get; private set; }
 
-		public string OutputDirectory { get; set; }
-
-		public MetadataTrimming MetadataTrimming { get; set; }
-
-		public AssemblyAction TrimAction { get; set; }
-
-		public AssemblyAction DefaultAction { get; set; }
-
-		public bool LinkSymbols { get; set; }
+		public string? ReproDirectory { get; set; }
 
 		public readonly bool KeepMembersForDebugger = true;
-
-		public bool IgnoreUnresolved { get; set; }
-
-		public bool EnableReducedTracing { get; set; }
-
-		public bool KeepUsedAttributeTypesOnly { get; set; }
-
-		public bool EnableSerializationDiscovery { get; set; }
-
-		public bool DisableOperatorDiscovery { get; set; }
 
 		/// <summary>
 		/// Option to not special case EventSource.
 		/// Currently, values are hard-coded and does not have a command line option to control
 		/// </summary>
-		public bool DisableEventSourceSpecialHandling { get; set; }
-
-		public bool IgnoreDescriptors { get; set; }
-
-		public bool IgnoreSubstitutions { get; set; }
-
-		public bool IgnoreLinkAttributes { get; set; }
-
-		public Dictionary<string, bool> FeatureSettings { get; init; }
+		public bool DisableEventSourceSpecialHandling { get; set; } // TODO: could be removed?
 
 		public List<PInvokeInfo> PInvokes { get; private set; }
-
-		public string? PInvokesListFile;
-
-		public bool StripSecurity { get; set; }
-
-		public Dictionary<string, AssemblyAction> Actions {
-			get { return _actions; }
-		}
 
 		public AssemblyResolver Resolver {
 			get { return _resolver; }
@@ -151,23 +118,11 @@ namespace Mono.Linker
 
 		public ISymbolReaderProvider SymbolReaderProvider { get; set; }
 
-		public bool LogMessages { get; set; }
-
 		public MarkingHelpers MarkingHelpers { get; private set; }
 
 		public KnownMembers MarkedKnownMembers { get; private set; }
 
 		public WarningSuppressionWriter? WarningSuppressionWriter { get; set; }
-
-		public HashSet<int> NoWarn { get; set; }
-
-		public bool NoTrimWarn { get; set; }
-
-		public Dictionary<int, bool> WarnAsError { get; set; }
-
-		public bool GeneralWarnAsError { get; set; }
-
-		public WarnVersion WarnVersion { get; set; }
 
 		public UnconditionalSuppressMessageAttributeState Suppressions { get; set; }
 
@@ -175,19 +130,13 @@ namespace Mono.Linker
 
 		public CodeOptimizationsSettings Optimizations { get; set; }
 
-		public bool AddReflectionAnnotations { get; set; }
-
-		public string? AssemblyListFile { get; set; }
-
 		public List<IMarkHandler> MarkHandlers { get; }
-
-		public Dictionary<string, bool> SingleWarn { get; set; }
-
-		public bool GeneralSingleWarn { get; set; }
 
 		public HashSet<string> AssembliesWithGeneratedSingleWarning { get; set; }
 
 		public SerializationMarker SerializationMarker { get; }
+
+		public new string OutputDirectory => base.OutputDirectory ?? "output";
 
 		public LinkContext (Pipeline pipeline, ILogger logger, string outputDirectory)
 		{
@@ -203,7 +152,6 @@ namespace Mono.Linker
 			_cachedWarningMessageContainers = new List<MessageContainer> ();
 			_isTrimmable = new Dictionary<AssemblyDefinition, bool> ();
 			OutputDirectory = outputDirectory;
-			FeatureSettings = new Dictionary<string, bool> (StringComparer.Ordinal);
 
 			SymbolReaderProvider = new DefaultSymbolReaderProvider (false);
 
@@ -215,42 +163,16 @@ namespace Mono.Linker
 			MarkedKnownMembers = new KnownMembers ();
 			PInvokes = new List<PInvokeInfo> ();
 			Suppressions = new UnconditionalSuppressMessageAttributeState (this);
-			NoWarn = new HashSet<int> ();
 			GeneralWarnAsError = false;
-			WarnAsError = new Dictionary<int, bool> ();
 			WarnVersion = WarnVersion.Latest;
 			MarkHandlers = new List<IMarkHandler> ();
 			GeneralSingleWarn = false;
-			SingleWarn = new Dictionary<string, bool> ();
 			AssembliesWithGeneratedSingleWarning = new HashSet<string> ();
 
-			const CodeOptimizations defaultOptimizations =
-				CodeOptimizations.BeforeFieldInit |
-				CodeOptimizations.OverrideRemoval |
-				CodeOptimizations.UnusedInterfaces |
-				CodeOptimizations.UnusedTypeChecks |
-				CodeOptimizations.IPConstantPropagation |
-				CodeOptimizations.UnreachableBodies |
-				CodeOptimizations.RemoveDescriptors |
-				CodeOptimizations.RemoveLinkAttributes |
-				CodeOptimizations.RemoveSubstitutions |
-				CodeOptimizations.RemoveDynamicDependencyAttribute |
-				CodeOptimizations.OptimizeTypeHierarchyAnnotations;
 
 			DisableEventSourceSpecialHandling = true;
 
 			Optimizations = new CodeOptimizationsSettings (defaultOptimizations);
-		}
-
-		public void SetFeatureValue (string feature, bool value)
-		{
-			Debug.Assert (!String.IsNullOrEmpty (feature));
-			FeatureSettings[feature] = value;
-		}
-
-		public bool HasFeatureValue (string feature, bool value)
-		{
-			return FeatureSettings.TryGetValue (feature, out bool fvalue) && value == fvalue;
 		}
 
 		public TypeDefinition? GetType (string fullName)
@@ -360,11 +282,6 @@ namespace Mono.Linker
 				reference = (AssemblyNameReference) scope;
 
 			return reference;
-		}
-
-		public void RegisterAssemblyAction (string assemblyName, AssemblyAction action)
-		{
-			_actions[assemblyName] = action;
 		}
 
 #if !FEATURE_ILLINK

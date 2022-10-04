@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Collections.Generic;
+using System.Diagnostics;
+using Mono.Linker;
 
 namespace Mono.Linker.Tests.TestCasesRunner
 {
@@ -11,7 +13,7 @@ namespace Mono.Linker.Tests.TestCasesRunner
 		{
 			readonly LinkerCustomizations _customization;
 
-			public TestDriver (Queue<string> args, LinkerCustomizations customizations) : base (args)
+			public TestDriver (LinkerOptions options, LinkerCustomizations customizations) : base (options)
 			{
 				_customization = customizations;
 			}
@@ -26,8 +28,9 @@ namespace Mono.Linker.Tests.TestCasesRunner
 
 		public virtual void Link (string[] args, LinkerCustomizations customizations, ILogger logger)
 		{
-			Driver.ProcessResponseFile (args, out var queue);
-			using (var driver = new TestDriver (queue, customizations)) {
+			bool parsed = new ArgumentProcessor (args).TryProcess (out var options);
+			Debug.Assert (parsed);
+			using (var driver = new TestDriver (options, customizations)) {
 				driver.Run (logger);
 			}
 		}

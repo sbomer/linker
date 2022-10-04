@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -30,8 +31,12 @@ namespace ILLink.Tasks.Tests
 		{
 			using (var responseFileText = new StringReader (GenerateResponseFileCommands ())) {
 				var arguments = new Queue<string> ();
-				Driver.ParseResponseFile (responseFileText, arguments);
-				return new MockDriver (arguments);
+				ArgumentProcessor.ParseResponseFile (responseFileText, arguments);
+				var argumentProcessor = new ArgumentProcessor (null);
+				argumentProcessor.arguments = arguments;
+				var processed = argumentProcessor.ProcessArguments (out LinkerOptions options);
+				Debug.Assert (processed);
+				return new MockDriver (options);
 			}
 		}
 
@@ -94,11 +99,11 @@ namespace ILLink.Tasks.Tests
 			}
 		}
 
-		public MockDriver (Queue<string> arguments) : base (arguments)
+		public MockDriver (LinkerOptions options) : base (options)
 		{
 			// Always set up the context early on.
 			Logger = new CustomLogger ();
-			SetupContext (Logger);
+			SetupContext (options, Logger);
 		}
 
 		public new LinkContext Context => base.Context;
@@ -159,9 +164,9 @@ namespace ILLink.Tasks.Tests
 			return (IEnumerable<IDependencyRecorder>) typeof (Tracer).GetField ("recorders", BindingFlags.NonPublic | BindingFlags.Instance).GetValue (Context.Tracer);
 		}
 
-		public new bool GetOptimizationName (string optimization, out CodeOptimizations codeOptimizations)
+		public bool GetOptimizationName (string optimization, out CodeOptimizations codeOptimizations)
 		{
-			return base.GetOptimizationName (optimization, out codeOptimizations);
+			return ArgumentProcessor.GetOptimizationName (optimization, out codeOptimizations);
 		}
 
 		public CodeOptimizations GetDefaultOptimizations ()
