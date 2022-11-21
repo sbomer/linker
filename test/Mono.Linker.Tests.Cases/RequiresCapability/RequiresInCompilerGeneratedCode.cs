@@ -1980,6 +1980,16 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 				lambda ();
 			}
 
+			[RequiresUnreferencedCode ("--TestStaticLambdaInMethodWithRequires--")]
+			[RequiresAssemblyFiles ("--TestStaticLambdaInMethodWithRequires--")]
+			[RequiresDynamicCode ("--TestStaticLambdaInMethodWithRequires--")]
+			static void TestStaticLambdaInMethodWithRequires ()
+			{
+				var lambda = static () => MethodWithRequires ();
+
+				lambda ();
+			}
+
 			[RequiresUnreferencedCode ("--TestLambdaWithClosureInMethodWithRequires--")]
 			[RequiresAssemblyFiles ("--TestLambdaWithClosureInMethodWithRequires--")]
 			[RequiresDynamicCode ("--TestLambdaWithClosureInMethodWithRequires--")]
@@ -1996,11 +2006,13 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			// Warnings for Reflection access to methods with Requires
 			[ExpectedWarning ("IL2026", "--TestLambdaInMethodWithRequires--")]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureInMethodWithRequires--")]
+			[ExpectedWarning ("IL2026", "--TestStaticLambdaInMethodWithRequires--")]
 			// The linker correctly emits warnings about reflection access to lambdas with Requires
 			// or which inherit Requires from the containing method. The analyzer doesn't bind to lambdas
 			// so does not warn here.
 			[ExpectedWarning ("IL2026", "--TestLambdaWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureWithRequires--", ProducedBy = ProducedBy.Trimmer)]
+			[ExpectedWarning ("IL2026", "--TestStaticLambdaInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			static void TestAll ()
@@ -2011,6 +2023,7 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			// Warnings for Reflection access to methods with Requires
 			[ExpectedWarning ("IL2026", "--TestLambdaInMethodWithRequires--")]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureInMethodWithRequires--")]
+			[ExpectedWarning ("IL2026", "--TestStaticLambdaInMethodWithRequires--")]
 			// NonPublicMethods doesn't warn for lambdas emitted into display class types.
 			static void TestNonPublicMethods ()
 			{
