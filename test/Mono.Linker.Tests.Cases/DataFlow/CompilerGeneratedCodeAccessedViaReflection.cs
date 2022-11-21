@@ -324,13 +324,13 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 
 			static void LambdaWithCapturedTypeToDAM ()
 			{
-				var t = GetWithPublicMethods ();
+				var t_LambdaWithCapturedTypeToDAM = GetWithPublicMethods ();
 				var lambda =
 				[ExpectedWarning ("IL2119", "<" + nameof (LambdaWithCapturedTypeToDAM) + ">",
 					ProducedBy = ProducedBy.Trimmer)]
 				[ExpectedWarning ("IL2072", nameof (GetWithPublicMethods), nameof (DataFlowTypeExtensions.RequiresAll))]
 				() => {
-					t.RequiresAll ();
+					t_LambdaWithCapturedTypeToDAM.RequiresAll ();
 				};
 				lambda ();
 			}
@@ -442,8 +442,8 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 					ProducedBy = ProducedBy.Trimmer)]
 				void LocalFunction ()
 				{
-					var t = GetAll ();
-					t.RequiresAll ();
+					var t_LocalFunctionWithCorrectDataflow = GetAll ();
+					t_LocalFunctionWithCorrectDataflow.RequiresAll ();
 				};
 				LocalFunction ();
 			}
@@ -455,20 +455,20 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 					ProducedBy = ProducedBy.Trimmer)]
 				void LocalFunction ()
 				{
-					var t = GetWithPublicMethods ();
-					t.RequiresAll ();
+					var t_LocalFunctionWithProblematicDataflow = GetWithPublicMethods ();
+					t_LocalFunctionWithProblematicDataflow.RequiresAll ();
 				};
 				LocalFunction ();
 			}
 
 			static void LocalFunctionWithCapturedTypeToDAM ()
 			{
-				var t = GetAll ();
+				var t_LocalFunctionWithCapturedTypeToDAM = GetAll ();
 				[ExpectedWarning ("IL2119", "<" + nameof (LocalFunctionWithCapturedTypeToDAM) + ">",
 					ProducedBy = ProducedBy.Trimmer)]
 				void LocalFunction ()
 				{
-					t.RequiresAll ();
+					t_LocalFunctionWithCapturedTypeToDAM.RequiresAll ();
 				};
 				LocalFunction ();
 			}
@@ -532,15 +532,15 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 				}
 			}
 
-			[ExpectedWarning ("IL2118", nameof (LocalFunctionCallsPInvokeTakingObject),
+			[ExpectedWarning ("IL2118", "<" + nameof (LocalFunctionCallsPInvokeTakingObject) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2118", nameof (LocalFunctionCallsMethodWithRequires),
+			[ExpectedWarning ("IL2118", "<" + nameof (LocalFunctionCallsMethodWithRequires) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2118", nameof (LocalFunctionWithCorrectDataflow),
+			[ExpectedWarning ("IL2118", "<" + nameof (LocalFunctionWithCorrectDataflow) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2118", nameof (LocalFunctionWithProblematicDataflow),
+			[ExpectedWarning ("IL2118", "<" + nameof (LocalFunctionWithProblematicDataflow) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2118", nameof (LocalFunctionWithCapturedTypeToDAM),
+			[ExpectedWarning ("IL2118", "<" + nameof (LocalFunctionWithCapturedTypeToDAM) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
 			// Expect RUC warnings for static, compiler-generated code warnings for instance.
 			[ExpectedWarning ("IL2026", nameof (RUCTypeWithLocalFunctions) + "()", "--RUCTypeWithLocalFunctions--")]
