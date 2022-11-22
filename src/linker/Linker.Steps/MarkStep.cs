@@ -1653,8 +1653,8 @@ namespace Mono.Linker.Steps
 			// When marking override methods via DynamicallyAccessedMembers, we should only issue a warning for the base method.
 			bool skipWarningsForOverride = member is MethodDefinition m && m.IsVirtual && Annotations.GetBaseMethods (m) != null;
 
-			bool isReflectionAccessCoveredByRUC = Annotations.DoesMemberRequireUnreferencedCode (member, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCodeAttribute);
-			if (isReflectionAccessCoveredByRUC && !skipWarningsForOverride) {
+			bool warnOnReflectionAccessForRUC = Annotations.DoesMemberRequireUnreferencedCode (member, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCodeAttribute);
+			if (warnOnReflectionAccessForRUC && !skipWarningsForOverride) {
 				var id = reportOnMember ? DiagnosticId.DynamicallyAccessedMembersOnTypeReferencesMemberWithRequiresUnreferencedCode : DiagnosticId.DynamicallyAccessedMembersOnTypeReferencesMemberOnBaseWithRequiresUnreferencedCode;
 				Context.LogWarning (origin, id, type.GetDisplayName (),
 					((MemberReference) member).GetDisplayName (), // The cast is valid since it has to be a method or field
@@ -1673,6 +1673,7 @@ namespace Mono.Linker.Steps
 			// the base, but for unannotated compiler-generated methods this is not the case, so we must produce these warnings even
 			// for virtual overrides. This ensures that we include the unannotated MoveNext state machine method. Lambdas and local
 			// functions should never be virtual overrides in the first place.
+			bool isReflectionAccessCoveredByRUC = Annotations.ShouldSuppressAnalysisWarningsForRequiresUnreferencedCode (member);
 			bool isCoveredByAnnotations = isReflectionAccessCoveredByRUC || isReflectionAccessCoveredByDAM;
 			if (member is MethodDefinition method && ShouldWarnForReflectionAccessToCompilerGeneratedCode (method, isCoveredByAnnotations)) {
 				var id = reportOnMember ? DiagnosticId.DynamicallyAccessedMembersOnTypeReferencesCompilerGeneratedMember : DiagnosticId.DynamicallyAccessedMembersOnTypeReferencesCompilerGeneratedMemberOnBase;
@@ -3047,8 +3048,8 @@ namespace Mono.Linker.Steps
 			// When marking override methods via DynamicallyAccessedMembers, we should only issue a warning for the base method.
 			bool skipWarningsForOverride = dependencyKind == DependencyKind.DynamicallyAccessedMember && method.IsVirtual && Annotations.GetBaseMethods (method) != null;
 
-			bool isReflectionAccessCoveredByRUC = Annotations.DoesMethodRequireUnreferencedCode (method, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCode);
-			if (isReflectionAccessCoveredByRUC && !skipWarningsForOverride)
+			bool warnOnReflectionAccessForRUC = Annotations.DoesMethodRequireUnreferencedCode (method, out RequiresUnreferencedCodeAttribute? requiresUnreferencedCode);
+			if (warnOnReflectionAccessForRUC && !skipWarningsForOverride)
 				ReportRequiresUnreferencedCode (method.GetDisplayName (), requiresUnreferencedCode!, new DiagnosticContext (origin, diagnosticsEnabled: true, Context));
 
 			bool isReflectionAccessCoveredByDAM = Annotations.FlowAnnotations.ShouldWarnWhenAccessedForReflection (method);
@@ -3070,6 +3071,7 @@ namespace Mono.Linker.Steps
 			// the base, but for unannotated compiler-generated methods this is not the case, so we must produce these warnings even
 			// for virtual overrides. This ensures that we include the unannotated MoveNext state machine method. Lambdas and local
 			// functions should never be virtual overrides in the first place.
+			bool isReflectionAccessCoveredByRUC = Annotations.IsInRequiresUnreferencedCodeScope (method, out _);
 			bool isCoveredByAnnotations = isReflectionAccessCoveredByRUC || isReflectionAccessCoveredByDAM;
 			switch (dependencyKind) {
 			case DependencyKind.AccessedViaReflection:
