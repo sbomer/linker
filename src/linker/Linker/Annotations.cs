@@ -37,6 +37,7 @@ using System.Linq;
 using ILLink.Shared.TrimAnalysis;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Linker.Dataflow;
 
 namespace Mono.Linker
 {
@@ -604,14 +605,38 @@ namespace Mono.Linker
 		/// <remarks>Unlike <see cref="DoesMemberRequireUnreferencedCode(IMemberDefinition, out RequiresUnreferencedCodeAttribute?)"/>
 		/// if a declaring type has RUC, all methods in that type are considered "in scope" of that RUC. So this includes also
 		/// instance methods (not just statics and .ctors).</remarks>
-		internal bool IsInRequiresUnreferencedCodeScope (MethodDefinition method)
+		internal bool IsInRequiresUnreferencedCodeScope (MethodDefinition method, [NotNullWhen (true)] out RequiresUnreferencedCodeAttribute? attribute)
 		{
-			if (HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (method) && !method.IsStaticConstructor ())
+			if (TryGetLinkerAttribute (method, out attribute) && !method.IsStaticConstructor ())
 				return true;
 
-			if (method.DeclaringType is not null && HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (method.DeclaringType))
+			if (method.DeclaringType is not null && TryGetLinkerAttribute (method.DeclaringType, out attribute))
 				return true;
 
+			if (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (method, out var owningMethod)) {
+				// If it's a compiler-generated method in the same type, then we already checked the method and the type.
+				// We only need to check the owning method now.
+				if (owningMethod.DeclaringType == method.DeclaringType)
+					return TryGetLinkerAttribute (owningMethod, out attribute);
+
+				// If the compiler-generated method is in a different (compiler-generated) type, then we need to check
+				// _its_ owning method as well.\
+				return IsInRequiresUnreferencedCodeScope (owningMethod, out attribute);
+			}
+
+			return false;
+		}
+
+		// Represents both IsInScope and DoesRequire, which are equivalent for types.
+		internal bool RequiresUnreferencedCode (TypeDefinition type, [NotNullWhen (true)] out RequiresUnreferencedCodeAttribute? attribute)
+		{
+			if (TryGetLinkerAttribute (type, out attribute))
+				return true;
+
+			if (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (type, out var owningMethod))
+				return IsInRequiresUnreferencedCodeScope (owningMethod, out attribute);
+
+			attribute = null;
 			return false;
 		}
 
@@ -636,35 +661,83 @@ namespace Mono.Linker
 			// since that attribute automatically suppresses all trim analysis warnings.
 			// Check both the immediate origin method as well as suppression context method
 			// since that will be different for compiler generated code.
-			if (originMember is MethodDefinition &&
-				IsInRequiresUnreferencedCodeScope ((MethodDefinition) originMember))
-				return true;
+			// if (originMember is MethodDefinition &&
+			// 	IsInRequiresUnreferencedCodeScope ((MethodDefinition) originMember, out _))
+			// 	return true;
 
-			if (originMember is not IMemberDefinition member)
+			// if (originMember is not IMemberDefinition member)
+			// 	return false;
+
+			// MethodDefinition? owningMethod;
+			// while (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (member, out owningMethod)) {
+			// 	Debug.Assert (owningMethod != member);
+			// 	if (IsInRequiresUnreferencedCodeScope (owningMethod, out _))
+			// 		return true;
+			// 	member = owningMethod;
+			// }
+
+			// return false;
+			if (originMember is not MethodDefinition method)
 				return false;
 
-			MethodDefinition? owningMethod;
-			while (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (member, out owningMethod)) {
-				Debug.Assert (owningMethod != member);
-				if (IsInRequiresUnreferencedCodeScope (owningMethod))
-					return true;
-				member = owningMethod;
-			}
-
-			return false;
+			return IsInRequiresUnreferencedCodeScope (method, out _);
 		}
 
-		internal bool DoesMethodRequireUnreferencedCode (MethodDefinition originalMethod, [NotNullWhen (returnValue: true)] out RequiresUnreferencedCodeAttribute? attribute)
+		internal bool DoesMethodRequireUnreferencedCode (MethodDefinition method, [NotNullWhen (returnValue: true)] out RequiresUnreferencedCodeAttribute? attribute)
 		{
-			MethodDefinition? method = originalMethod;
-			do {
-				if (!method.IsStaticConstructor () && TryGetLinkerAttribute (method, out attribute))
-					return true;
+			if (!method.IsStaticConstructor () && TryGetLinkerAttribute (method, out attribute))
+				return true;
 
-				if ((method.IsStatic || method.IsConstructor) && method.DeclaringType is not null &&
-					TryGetLinkerAttribute (method.DeclaringType, out attribute))
+			// Covers explicit annotation on type, as well as
+			// requirements created for compiler-generated types
+			// like iterators (but currently not closure environments).
+			if (method.DeclaringType is not null && RequiresUnreferencedCode (method.DeclaringType, out attribute)) {
+				Debug.Assert (!CompilerGeneratedNames.IsLambdaDisplayClass (method.DeclaringType.Name));
+				return method.IsStatic || method.IsConstructor;
+			}
+
+			// The above should be enough if we handle compiler-generated types correctly.
+			// But we only track iterator method -> state machine type,
+			// or method -> containing methods
+			// So can't go up to the display class.
+			// Need to also go method -> method. for the display class.
+			// Sometimes, there's _NO_ display class. Will always need to go method -> method.
+			
+			// Treat compiler-generated types as if they have RUC
+			// if the owning method is in a RUC scope.
+			if (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (method, out var owningMethod)) {
+				// Can be owning method of nested function,
+				// Or an iterator method.
+				if (IsInRequiresUnreferencedCodeScope (owningMethod, out attribute))
+				{
+					// Nested functions, we don't treat display class yet.
+					Debug.Assert (CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name));
+					// if it was an iterator method, we would have dealt with it above already.
 					return true;
-			} while (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (method, out method));
+				}
+
+
+				// Debug.Assert (CompilerGeneratedNames.IsLambdaOrLocalFunction (method.Name));
+				// If it's a compiler-generated method in the same type, then we already checked the method
+				// and the type. We only need to check the owning method now.
+				// Method doesn't need to have RUC directly on it, it's enough if it is in a RUC type.
+				// Which we would've checked already, but still...
+
+				if (owningMethod.DeclaringType == method.DeclaringType)
+					return TryGetLinkerAttribute (owningMethod, out attribute);
+
+				// If the compiler-generated method is in a different (compiler-generated) type, then treat
+				// it as if that type has RUC if the owning method is in a RUC scope.
+				// if it's a state m achine type.
+				// Should return true even if the owning method is just in a RUC type where warnings are silenced.
+				if (IsInRequiresUnreferencedCodeScope (owningMethod, out attribute)) {
+					if (CompilerGeneratedNames.IsStateMachineType (method.DeclaringType.Name))
+						return method.IsStatic || method.IsConstructor;
+					// But if it wasn't a state machine type (so lambda display classs), then we warn on access
+					// to instance members too.
+					return true;
+				}
+			}
 
 			attribute = null;
 			return false;
@@ -677,7 +750,21 @@ namespace Mono.Linker
 				return false;
 			}
 
-			return TryGetLinkerAttribute (field.DeclaringType, out attribute);
+			if (TryGetLinkerAttribute (field.DeclaringType, out attribute))
+				return true;
+
+			if (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (field, out var owningMethod)) {
+				Debug.Assert (owningMethod.DeclaringType != field.DeclaringType);
+
+				// If the compiler-generated field is in a different (compiler-generated) type, then treat
+				// it as if that type has RUC if the owning method is in a RUC scope.
+				if (IsInRequiresUnreferencedCodeScope (owningMethod, out attribute)) {
+					if (field.IsStatic)
+						return true;
+				}
+			}
+
+			return false;
 		}
 
 		/// <Summary>

@@ -1754,6 +1754,8 @@ namespace Mono.Linker.Steps
 			if (isCoveredByAnnotations)
 				return false;
 
+			// The fix to this function means we will also start warning for reflection access to lambda display class fields.
+			// How to state machine fields work?
 			if (!CompilerGeneratedState.IsNestedFunctionOrStateMachineMember (field))
 				return false;
 
@@ -2957,6 +2959,15 @@ namespace Mono.Linker.Steps
 
 		void ProcessAnalysisAnnotationsForMethod (MethodDefinition method, DependencyKind dependencyKind, in MessageOrigin origin)
 		{
+			if (method.ToString().Contains("TestLambdaInMethodWithRequires"))
+				Console.WriteLine("DoesMethodRequireUnreferencedCode");
+
+			if (method.ToString().Contains("MethodWithLambdas"))
+				Console.WriteLine("DoesMethodRequireUnreferencedCode");
+
+			
+			if (method.ToString().Contains("MethodWithLambdas"))
+				Console.WriteLine("DoesMethodRequireUnreferencedCode");
 			// There are only two ways to get there such that the origin isn't the same as the top of the scopestack.
 			// - For DAM on type, the current scope is the caller of GetType, while the origin is the type itself.
 			// - For warnings produced inside compiler-generated code, the current scope is the user code that
@@ -3084,6 +3095,8 @@ namespace Mono.Linker.Steps
 
 		internal static void ReportRequiresUnreferencedCode (string displayName, RequiresUnreferencedCodeAttribute requiresUnreferencedCode, in DiagnosticContext diagnosticContext)
 		{
+			if (diagnosticContext.Origin.Provider?.ToString().Contains("StaticCCtorTriggeredByFieldAccessRead") == true)
+				Console.WriteLine("Hey");
 			string arg1 = MessageFormat.FormatRequiresAttributeMessageArg (requiresUnreferencedCode.Message);
 			string arg2 = MessageFormat.FormatRequiresAttributeUrlArg (requiresUnreferencedCode.Url);
 			diagnosticContext.AddDiagnostic (DiagnosticId.RequiresUnreferencedCode, displayName, arg1, arg2);
@@ -3114,6 +3127,9 @@ namespace Mono.Linker.Steps
 			ScopeStack.AssertIsEmpty ();
 			using var parentScope = ScopeStack.PushScope (new MarkScopeStack.Scope (origin));
 			using var methodScope = ScopeStack.PushScope (new MessageOrigin (method));
+
+			if (method.ToString().Contains("TestIteratorOnlyReferencedViaReflectionWhichShouldSuppress"))
+				System.Console.Write("Hey");
 
 			// Record the reason for marking a method on each call. The logic under CheckProcessed happens
 			// only once per method.

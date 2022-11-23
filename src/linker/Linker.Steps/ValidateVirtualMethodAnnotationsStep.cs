@@ -40,8 +40,14 @@ namespace Mono.Linker.Steps
 		void ValidateMethodRequiresUnreferencedCodeAreSame (MethodDefinition method, MethodDefinition baseMethod)
 		{
 			var annotations = Context.Annotations;
-			bool methodHasAttribute = annotations.IsInRequiresUnreferencedCodeScope (method);
-			if (methodHasAttribute != annotations.IsInRequiresUnreferencedCodeScope (baseMethod)) {
+			// bool methodCreatesRequirement = annotations.DoesMethodRequireUnreferencedCode (method, out _);
+			// bool baseCreatesRequirement = annotations.DoesMethodRequireUnreferencedCode (baseMethod, out _);
+			// bool methodFulfillsRequirement = annotations.IsInRequiresUnreferencedCodeScope (method, out _);
+			// bool baseFulfillsRequirement = annotations.IsInRequiresUnreferencedCodeScope (baseMethod, out _);
+			// if ((methodCreatesRequirement && !baseFulfillsRequirement) || (baseCreatesRequirement && !methodFulfillsRequirement)) {
+			// 	string message = MessageFormat.FormatRequiresAttributeMismatch (methodCreatesRequirement,
+			bool methodHasAttribute = annotations.IsInRequiresUnreferencedCodeScope (method, out _);
+			if (methodHasAttribute != annotations.IsInRequiresUnreferencedCodeScope (baseMethod, out _)) {
 				string message = MessageFormat.FormatRequiresAttributeMismatch (methodHasAttribute,
 					baseMethod.DeclaringType.IsInterface, nameof (RequiresUnreferencedCodeAttribute), method.GetDisplayName (), baseMethod.GetDisplayName ());
 				Context.LogWarning (method, DiagnosticId.RequiresUnreferencedCodeAttributeMismatch, message);

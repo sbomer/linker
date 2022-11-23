@@ -57,6 +57,7 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 				ProducedBy = ProducedBy.Analyzer)]
 			[ExpectedWarning ("IL3050", "--MethodWithRequires--",
 				ProducedBy = ProducedBy.Analyzer)]
+			// Access to non-RUC compiler-generated code members is not allowed (and could be done without going through ctor, so we don't blame ctor here).
 			[ExpectedWarning ("IL2119", "<" + nameof (IteratorCallsMethodWithRequires) + ">", "MoveNext", CompilerGeneratedCode = true,
 				ProducedBy = ProducedBy.Trimmer)]
 			public static IEnumerable<int> IteratorCallsMethodWithRequires ()
@@ -312,6 +313,9 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 				lambda ();
 			}
 
+			// Not including the change to warn on display class member access
+			// [ExpectedWarning ("IL2119", "t_LambdaWithCapturedTypeToDAM", CompilerGeneratedCode = true,
+				// ProducedBy = ProducedBy.Trimmer)]
 			static void LambdaWithCapturedTypeToDAM ()
 			{
 				var t_LambdaWithCapturedTypeToDAM = GetWithPublicMethods ();
@@ -355,19 +359,34 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 			[RequiresUnreferencedCode ("--RUCTypeWithLambdas--")]
 			class RUCTypeWithLambdas
 			{
+				// Used to warn on ref access to the lambdas, but they're not static,
+				// so now why doesn't it warn on displayclass ctor?
 				public void MethodWithLambdas ()
 				{
 					var lambda =
 					[ExpectedWarning ("IL2112", "<" + nameof (MethodWithLambdas) + ">", "--RUCTypeWithLambdas--",
 						ProducedBy = ProducedBy.Trimmer)]
+					// [ExpectedWarning ("IL2119", "<" + nameof (MethodWithLambdas) + ">",
+					// 	ProducedBy = ProducedBy.Trimmer)]
+					// the MethodWithLambdas is no longer warning because we treat the display class as having RUC,
+					// which eliminates warnings on accesses to instance members.
+					// BUT this should still warn on access to the display class ctor. BUG!
+					// Currently doesn't because we don't associate the display class with user code.
+					// Is impossible for "static" display class that can be shared between multiple user methods.
+					// 2 options:
+					// 1. Associate the display class with the user method for non-static display classes
+					// 2. warn on instance access for all display class members
 					[ExpectedWarning ("IL3002", "--MethodWithRequires--", ProducedBy = ProducedBy.Analyzer)]
 					[ExpectedWarning ("IL3050", "--MethodWithRequires--", ProducedBy = ProducedBy.Analyzer)]
 					() => MethodWithRequires ();
 
 					int i = 0;
 					var lambdaWithCapturedState =
+					// [ExpectedWarning ("IL2119", "<" + nameof (MethodWithLambdas) + ">",
+					// 	ProducedBy = ProducedBy.Trimmer)]
 					[ExpectedWarning ("IL2112", "<" + nameof (MethodWithLambdas) + ">", "--RUCTypeWithLambdas--",
 						ProducedBy = ProducedBy.Trimmer)]
+					// BUG: should warn on display class ctor!
 					[ExpectedWarning ("IL3002", "--MethodWithRequires--", ProducedBy = ProducedBy.Analyzer)]
 					[ExpectedWarning ("IL3050", "--MethodWithRequires--", ProducedBy = ProducedBy.Analyzer)]
 					() => {
@@ -392,12 +411,18 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 				ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2118", "<" + nameof (LambdaWithCapturedTypeToDAM) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
+			// Not including change to warn on access to fields of display classes
+			// [ExpectedWarning ("IL2118", "t_LambdaWithCapturedTypeToDAM",
+			// 	ProducedBy = ProducedBy.Trimmer)]
 			// Expect RUC warnings for static, compiler-generated code warnings for instance.
+			// TODO: why no warning for MethodWithLambdas ctor!???!?!
+			// Because is not yet blaming display class.
 			[ExpectedWarning ("IL2026", nameof (RUCTypeWithLambdas) + "()", "--RUCTypeWithLambdas--")]
 			[ExpectedWarning ("IL2026", "<" + nameof (RUCTypeWithLambdas.MethodWithLambdas) + ">", "--RUCTypeWithLambdas--",
 				ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "<" + nameof (RUCTypeWithLambdas.MethodWithLambdas) + ">", "--RUCTypeWithLambdas--",
 				ProducedBy = ProducedBy.Trimmer)]
+			// BUG: should warn on display class ctor!
 			public static void Test (Lambdas test = null)
 			{
 				typeof (Lambdas).RequiresAll ();
@@ -451,6 +476,8 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 				LocalFunction ();
 			}
 
+//			[ExpectedWarning ("IL2119", "t_LocalFunctionWithCapturedTypeToDAM", CompilerGeneratedCode = true,
+//				ProducedBy = ProducedBy.Trimmer)]
 			static void LocalFunctionWithCapturedTypeToDAM ()
 			{
 				var t_LocalFunctionWithCapturedTypeToDAM = GetAll ();
@@ -532,6 +559,8 @@ namespace Mono.Linker.Tests.Cases.DataFlow
 				ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2118", "<" + nameof (LocalFunctionWithCapturedTypeToDAM) + ">",
 				ProducedBy = ProducedBy.Trimmer)]
+			// [ExpectedWarning ("IL2118", "t_LocalFunctionWithCapturedTypeToDAM",
+			// 	ProducedBy = ProducedBy.Trimmer)]
 			// Expect RUC warnings for static, compiler-generated code warnings for instance.
 			[ExpectedWarning ("IL2026", nameof (RUCTypeWithLocalFunctions) + "()", "--RUCTypeWithLocalFunctions--")]
 			[ExpectedWarning ("IL2026", "<" + nameof (RUCTypeWithLocalFunctions.MethodWithLocalFunctions) + ">", "LocalFunctionWithCapturedState",

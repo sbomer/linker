@@ -2013,6 +2013,14 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			[ExpectedWarning ("IL2026", "--TestLambdaWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestStaticLambdaInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
+			// BUG: https://github.com/dotnet/runtime/issues/68786
+			// NativeAot doesn't associate Requires on method with the lambdas it contains.
+			// [ExpectedWarning ("IL2026", "--TestStaticLambdaInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer | ProducedBy.NativeAot)]
+			// BUG: NativeAot doesn't associate Requires on method with the lambdas it contains.
+			// With new linker behavior, treat closure type as RUC, so instance methods on it like the lambda
+			// don't warn.
+			// Actually. Not treating closure type as RUC. Do warn on instance methods of the lambda.
+			// TODO: BUT then it should warn on reflection access to the static field that holds the display class instance
 			[ExpectedWarning ("IL2026", "--TestLambdaInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			[ExpectedWarning ("IL2026", "--TestLambdaWithClosureInMethodWithRequires--", ProducedBy = ProducedBy.Trimmer)]
 			static void TestAll ()
