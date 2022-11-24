@@ -38,6 +38,7 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			ReflectionAccessOnProperties.Test ();
 			KeepFieldOnAttribute ();
 			AttributeParametersAndProperties.Test ();
+			MembersOnClassWithRequires<int>.Test ();
 		}
 
 		[RequiresUnreferencedCode ("Message for --ClassWithRequires--")]
@@ -985,6 +986,47 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			public static void Test ()
 			{
 				TestClass.Test ();
+			}
+		}
+
+		class MembersOnClassWithRequires<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] TMethods>
+		{
+			public class RequiresAll<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
+			{
+			}
+
+			[RequiresUnreferencedCode ("--ClassWithRequires--")]
+			public class ClassWithRequires
+			{
+				// BUG: should be suppressed by RequiresUnreferencedCode
+				[ExpectedWarning ("IL2091")]
+				public static RequiresAll<TMethods> fieldWithWarning;
+
+				[ExpectedWarning ("IL2091")]
+				public class ClassWithWarning : RequiresAll<TMethods>
+				{
+					[ExpectedWarning ("IL2091")]
+					public ClassWithWarning ()
+					{
+					}
+				}
+			}
+
+			// BUG: should be suppressed by RequiresUnreferencedCode
+			[ExpectedWarning ("IL2091")]
+			[RequiresUnreferencedCode ("--ClassWithWarningWithRequires--")]
+			public class ClassWithWarningWithRequires : RequiresAll<TMethods>
+			{
+			}
+
+			[ExpectedWarning ("IL2026", "--ClassWithRequires--")]
+			[ExpectedWarning ("IL2026", "--ClassWithWarningWithRequires--")]
+			[ExpectedWarning ("IL2091")]
+			public static void Test ()
+			{
+				var f = ClassWithRequires.fieldWithWarning;
+				var c = new ClassWithRequires.ClassWithWarning ();
+				var d = new ClassWithWarningWithRequires ();
 			}
 		}
 	}
