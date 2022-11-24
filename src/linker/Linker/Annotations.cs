@@ -604,12 +604,18 @@ namespace Mono.Linker
 		/// <remarks>Unlike <see cref="DoesMemberRequireUnreferencedCode(IMemberDefinition, out RequiresUnreferencedCodeAttribute?)"/>
 		/// if a declaring type has RUC, all methods in that type are considered "in scope" of that RUC. So this includes also
 		/// instance methods (not just statics and .ctors).</remarks>
-		internal bool IsInRequiresUnreferencedCodeScope (MethodDefinition method)
+		internal bool IsInRequiresUnreferencedCodeScope (IMemberDefinition member)
 		{
-			if (HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (method) && !method.IsStaticConstructor ())
+			if (member is TypeDefinition type)
+				return HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (type);
+
+			if (member is MethodDefinition method &&
+				HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (method)
+				&& !method.IsStaticConstructor ())
 				return true;
 
-			if (method.DeclaringType is not null && HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (method.DeclaringType))
+			if (member.DeclaringType is TypeDefinition declaringType &&
+				HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (declaringType))
 				return true;
 
 			return false;
@@ -636,12 +642,11 @@ namespace Mono.Linker
 			// since that attribute automatically suppresses all trim analysis warnings.
 			// Check both the immediate origin method as well as suppression context method
 			// since that will be different for compiler generated code.
-			if (originMember is MethodDefinition &&
-				IsInRequiresUnreferencedCodeScope ((MethodDefinition) originMember))
-				return true;
-
 			if (originMember is not IMemberDefinition member)
 				return false;
+
+			if (IsInRequiresUnreferencedCodeScope (member))
+				return true;
 
 			MethodDefinition? owningMethod;
 			while (context.CompilerGeneratedState.TryGetOwningMethodForCompilerGeneratedMember (member, out owningMethod)) {

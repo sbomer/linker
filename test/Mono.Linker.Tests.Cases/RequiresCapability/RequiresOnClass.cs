@@ -485,11 +485,6 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			public static int field;
 			public static int Property { get; set; }
 
-			// These should not be reported https://github.com/mono/linker/issues/2218
-			[ExpectedWarning ("IL2026", "MemberTypesWithRequires.Event.add", ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2026", "MemberTypesWithRequires.Event.add", ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2026", "MemberTypesWithRequires.Event.remove", ProducedBy = ProducedBy.Trimmer)]
-			[ExpectedWarning ("IL2026", "MemberTypesWithRequires.Event.remove", ProducedBy = ProducedBy.Trimmer)]
 			public static event EventHandler Event;
 		}
 
@@ -773,14 +768,6 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			[RequiresDynamicCode ("--WithRequires--")]
 			class WithRequires
 			{
-				// These should be reported only in TestDirectReflectionAccess
-				// https://github.com/mono/linker/issues/2218
-				[ExpectedWarning ("IL2026", "StaticEvent.add", ProducedBy = ProducedBy.Trimmer)]
-				[ExpectedWarning ("IL2026", "StaticEvent.add", ProducedBy = ProducedBy.Trimmer)]
-				[ExpectedWarning ("IL2026", "StaticEvent.add", ProducedBy = ProducedBy.Trimmer)]
-				[ExpectedWarning ("IL2026", "StaticEvent.remove", ProducedBy = ProducedBy.Trimmer)]
-				[ExpectedWarning ("IL2026", "StaticEvent.remove", ProducedBy = ProducedBy.Trimmer)]
-				[ExpectedWarning ("IL2026", "StaticEvent.remove", ProducedBy = ProducedBy.Trimmer)]
 				public static event EventHandler StaticEvent;
 			}
 
@@ -998,10 +985,9 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			[RequiresUnreferencedCode ("--ClassWithRequires--")]
 			public class ClassWithRequires
 			{
-				// BUG: should be suppressed by RequiresUnreferencedCode
-				[ExpectedWarning ("IL2091")]
 				public static RequiresAll<TMethods> fieldWithWarning;
 
+				// NOTE: The enclosing RUC does not apply to nested types. This warning is expected.
 				[ExpectedWarning ("IL2091")]
 				public class ClassWithWarning : RequiresAll<TMethods>
 				{
@@ -1012,8 +998,6 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 				}
 			}
 
-			// BUG: should be suppressed by RequiresUnreferencedCode
-			[ExpectedWarning ("IL2091")]
 			[RequiresUnreferencedCode ("--ClassWithWarningWithRequires--")]
 			public class ClassWithWarningWithRequires : RequiresAll<TMethods>
 			{
