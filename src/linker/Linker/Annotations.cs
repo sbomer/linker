@@ -606,8 +606,11 @@ namespace Mono.Linker
 		/// instance methods (not just statics and .ctors).</remarks>
 		internal bool IsInRequiresUnreferencedCodeScope (IMemberDefinition member)
 		{
-			if (member is TypeDefinition type)
-				return HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (type);
+			// This needs more work to fix the behavior of RUC on type with attributes/generics:
+			// https://github.com/dotnet/linker/issues/3140
+			// https://github.com/dotnet/linker/issues/3142
+			if (member is TypeDefinition)
+				return false;
 
 			if (member is MethodDefinition method &&
 				HasLinkerAttribute<RequiresUnreferencedCodeAttribute> (method)

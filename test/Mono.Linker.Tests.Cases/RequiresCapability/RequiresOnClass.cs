@@ -976,9 +976,9 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			}
 		}
 
-		class MembersOnClassWithRequires<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] TMethods>
+		class MembersOnClassWithRequires<[DynamicallyAccessedMembers (DynamicallyAccessedMemberTypes.PublicMethods)] TMethods>
 		{
-			public class RequiresAll<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
+			public class RequiresAll<[DynamicallyAccessedMembers (DynamicallyAccessedMemberTypes.All)] T>
 			{
 			}
 
@@ -998,6 +998,9 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 				}
 			}
 
+			// This warning should ideally be suppressed by the RUC on the type:
+			// https://github.com/dotnet/linker/issues/3142
+			[ExpectedWarning ("IL2091")]
 			[RequiresUnreferencedCode ("--ClassWithWarningWithRequires--")]
 			public class ClassWithWarningWithRequires : RequiresAll<TMethods>
 			{

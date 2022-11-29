@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Mono.Linker.Tests.Cases.Expectations.Assertions;
+using Mono.Linker.Tests.Cases.Expectations.Helpers;
 using Mono.Linker.Tests.Cases.Expectations.Metadata;
 using Mono.Linker.Tests.Cases.RequiresCapability.Dependencies;
 
@@ -30,6 +31,8 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 			Type.Interface annotatedInterface = new Type.NestedType ();
 
 			TestTypeWithRequires ();
+
+			ReflectionAccess.Test ();
 		}
 
 		[RequiresUnreferencedCode ("RUC on TestTypeWithRequires")]
@@ -138,5 +141,33 @@ namespace Mono.Linker.Tests.Cases.RequiresCapability
 	[RequiresUnreferencedCode ("Message from attribute's type.")]
 	public class RequiresOnAttributeTypeAttribute : Attribute
 	{
+	}
+
+	class ReflectionAccess
+	{
+		[RequiresOnAttributeCtor]
+		[RequiresUnreferencedCode ("--TypeWithRequires--")]
+		class TypeWithRequires
+		{
+			[RequiresOnAttributeCtor]
+			public static void Method () { }
+
+			// Should warn: https://github.com/dotnet/linker/issues/3140
+			[RequiresOnAttributeCtor]
+			public void InstanceMethod () { }
+		}
+
+		class MethodsWithRequires
+		{
+			[RequiresOnAttributeCtor]
+			[RequiresUnreferencedCode ("--MethodsWithRequires.Method--")]
+			public static void Method () { }
+		}
+
+		public static void Test ()
+		{
+			typeof (TypeWithRequires).RequiresAll ();
+			typeof (MethodsWithRequires).RequiresAll ();
+		}
 	}
 }
