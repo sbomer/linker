@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using ILLink.RoslynAnalyzer.DataFlow;
 using ILLink.Shared.DataFlow;
@@ -33,6 +34,8 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		// but the interesting ones for the linker are nearly always less than 32 elements.
 		const int MaxTrackedArrayValues = 32;
 
+		FeatureContextVisitor _featureContextVisitor;
+
 		public TrimAnalysisVisitor (
 			LocalContextLattice<MultiValue, FeatureContext, ValueSetLattice<SingleValue>, FeatureContextLattice> lattice,
 			IMethodSymbol method,
@@ -44,6 +47,13 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 		{
 			_multiValueLattice = lattice.LocalStateLattice.Lattice.ValueLattice;
 			TrimAnalysisPatterns = trimAnalysisPatterns;
+			_featureContextVisitor = new FeatureContextVisitor ();
+		}
+
+		public override bool TryGetBranchValueContext (IOperation branchValueOperation, StateValue state, [NotNullWhen (true)] out FeatureContext? branchValueContext)
+		{
+			branchValueContext = _featureContextVisitor.Visit (branchValueOperation, state.Current.Context);
+			return branchValueContext != null;
 		}
 
 		// Override visitor methods to create tracked values when visiting operations

@@ -28,7 +28,12 @@ namespace ILLink.Shared.DataFlow
 		private struct ControlFlowGraphState
 		{
 			// Dataflow states for each basic block
-			private readonly Dictionary<TBlock, TState> blockOutput;
+			// TODO: I think the fallthrough and conditional exception states should not
+			// be different. The exception state is the same for the entire region I think.
+			// All possibilities should be allowed in the exception state...
+			// so effectively the feature context will always be unknown.
+			// Unless it was known to begin with.
+			private readonly Dictionary<TBlock, (TState? FallThrough, TState? Conditional)> blockOutput;
 
 			// The control flow graph doesn't contain edges for exceptional control flow:
 			// - From any point in a try region to the start of any catch or finally
@@ -46,7 +51,11 @@ namespace ILLink.Shared.DataFlow
 			// propagated out of the finally.
 
 			// Dataflow states for finally blocks when exception propagate through the finally region
-			private readonly Dictionary<TBlock, TValue> exceptionFinallyState;
+
+			// Each block in a finally region has two tracked states - the normal state,
+			// and the state for when the finally region was reached via an exception.
+			// TODO: should this have a TValue or TState?
+			private readonly Dictionary<TBlock, (TValue? FallThrough, TValue? Conditional)> exceptionFinallyState;
 
 			// Finally regions may be reached (along non-exceptional paths)
 			// from multiple branches. This gets updated to track the normal finally input
@@ -55,7 +64,7 @@ namespace ILLink.Shared.DataFlow
 			private readonly TControlFlowGraph cfg;
 			private readonly TLattice lattice;
 
-			public ControlFlowGraphState (TControlFlowGraph cfg, TLattice lattice)
+			public ControlFlowGraphState (TControlFlowGraph cfg, TLattice lattice, TValue entryValue)
 			{
 				blockOutput = new ();
 				exceptionState = new ();
@@ -63,8 +72,15 @@ namespace ILLink.Shared.DataFlow
 				finallyInputState = new ();
 				this.cfg = cfg;
 				this.lattice = lattice;
+
+				blockOutput[cfg.Entry] = (new TState () {
+					Lattice = lattice,
+					Current = entryValue,
+					Exception = null
+				}, null);
 			}
 
+			// TODO: can the exception state of the conditional/fallthrough successor be different?
 			public Box<TValue> GetExceptionState (TRegion tryOrCatchOrFilterRegion)
 			{
 				if (tryOrCatchOrFilterRegion.Kind is not (RegionKind.Try or RegionKind.Catch or RegionKind.Filter))
@@ -107,39 +123,78 @@ namespace ILLink.Shared.DataFlow
 				finallyInputState[finallyRegion] = state;
 			}
 
-			public bool TryGetExceptionFinallyState (TBlock block, out TValue state)
+			public bool TryGetExceptionFinallyState (TBlock block, bool isConditional, out TValue state)
 			{
 				state = default;
 				if (!cfg.TryGetEnclosingFinally (block, out _))
 					return false;
 
-				if (!exceptionFinallyState.TryGetValue (block, out state)) {
-					state = lattice.Top;
-					exceptionFinallyState.Add (block, state);
+				if (!exceptionFinallyState.TryGetValue (block, out (TValue? FallThrough, TValue? Conditional) states)) {
+					states = isConditional ? (null, lattice.Top) : (lattice.Top, null);
+					exceptionFinallyState.Add (block, states);
 				}
+				// We might have a conditional or fallthrough state only so far, but be asked for the other one.
+				if (isConditional && states.Conditional is null) {
+					states = (states.FallThrough, lattice.Top);
+					exceptionFinallyState[block] = states;
+				}
+				if (!isConditional && states.FallThrough is null) {
+					states = (lattice.Top, states.Conditional);
+					exceptionFinallyState[block] = states;
+				}
+
+				state = isConditional ? states.Conditional!.Value : states.FallThrough!.Value;
 				return true;
 			}
 
-			public void SetExceptionFinallyState (TBlock block, TValue state)
+			public void SetExceptionFinallyState (TBlock block, bool isConditional, TValue state)
 			{
 				if (!cfg.TryGetEnclosingFinally (block, out _))
 					throw new InvalidOperationException ();
 
-				exceptionFinallyState[block] = state;
+				// TODO: should we check that the state is already set?
+				if (!exceptionFinallyState.TryGetValue (block, out (TValue? FallThrough, TValue? Conditional) states))
+					states = (null, null);
+				if (isConditional)
+					states.Conditional = state;
+				else
+					states.FallThrough = state;
+				exceptionFinallyState[block] = states;
 			}
 
-			public TState Get (TBlock block)
+			public TState? Get (TBlock block, bool isConditional)
 			{
-				if (!blockOutput.TryGetValue (block, out TState? state)) {
-					TryGetExceptionState (block, out Box<TValue>? exceptionState);
-					state = new TState () {
+				if (!blockOutput.TryGetValue (block, out (TState? FallThrough, TState? Conditional) states)) {
+					TryGetExceptionState (block, out Box<TValue>? exceptionState); // TODO?
+					var state = new TState () {
 						Lattice = lattice,
 						Current = lattice.Top,
 						Exception = exceptionState
 					};
-					blockOutput.Add (block, state);
+					states = isConditional ? (null, state) : (state, null);
+					blockOutput.Add (block, states);
 				}
-				return state;
+				// We might have allocated a fallthrough or conditional state only so far, but be requesting
+				// the other one now.
+				// The exception state should always be the same for both.
+				if (isConditional && states.Conditional is null) {
+					states = (states.FallThrough, new TState () {
+						Lattice = lattice,
+						Current = lattice.Top,
+						Exception = states.FallThrough!.Exception
+					});
+					blockOutput[block] = states;
+				}
+				if (!isConditional && states.FallThrough is null) {
+					states = (new TState () {
+						Lattice = lattice,
+						Current = lattice.Top,
+						Exception = states.Conditional!.Exception
+					}, states.Conditional);
+					blockOutput[block] = states;
+				}
+
+				return isConditional ? states!.Conditional : states!.FallThrough;
 			}
 		}
 
@@ -155,14 +210,29 @@ namespace ILLink.Shared.DataFlow
 		[Conditional ("DEBUG")]
 		public virtual void TraceBlockOutput (TValue normalState, TValue? exceptionState, TValue? exceptionFinallyState) { }
 
+		protected readonly TLattice lattice;
+
+		private readonly TValue entryValue;
+
+		protected ForwardDataFlowAnalysis (TLattice lattice, TValue entryValue)
+		{
+			this.lattice = lattice;
+			this.entryValue = entryValue;
+		}
+
 		// This just runs a dataflow algorithm until convergence. It doesn't cache any results,
 		// allowing each particular kind of analysis to decide what is worth saving.
-		public void Fixpoint (TControlFlowGraph cfg, TLattice lattice, TTransfer transfer)
+
+		// Maybe this could be simplified by pushing values forward, instead of pulling them from predecessors.
+		// I think that would let us store only one input value per block, instead of one per successor.
+		// But for now, we store one output state per successor, to allow differentiating between the conditional
+		// and unconditional branches of a conditional branch.
+		public void Fixpoint (TControlFlowGraph cfg, TTransfer transfer)
 		{
 			TraceStart (cfg);
 
 			// Initialize output of each block to the Top value of the lattice
-			var cfgState = new ControlFlowGraphState (cfg, lattice);
+			var cfgState = new ControlFlowGraphState (cfg, lattice, entryValue);
 
 			// For now, the actual dataflow algorithm is the simplest possible version.
 			// It is written to be obviously correct, but has not been optimized for performance
@@ -185,7 +255,15 @@ namespace ILLink.Shared.DataFlow
 			};
 
 			bool changed = true;
+			int iteration = 0;
 			while (changed) {
+
+				// Stop at 1000 iterations.
+				if (iteration == 20)
+					Console.WriteLine("Hey");
+				if (iteration > 30)
+					throw new Exception ("Dataflow analysis did not converge after 100 iterations");
+				Debug.WriteLine("Iteration " + iteration);
 				changed = false;
 				foreach (var block in cfg.Blocks) {
 
@@ -208,7 +286,6 @@ namespace ILLink.Shared.DataFlow
 					bool isFinallyBlock = cfg.TryGetEnclosingFinally (block, out TRegion? finallyRegion);
 					bool isFinallyStart = isFinallyBlock && block.Equals (cfg.FirstBlock (finallyRegion!));
 
-
 					//
 					// Meet over predecessors to get the new value at the start of this block.
 					//
@@ -216,7 +293,7 @@ namespace ILLink.Shared.DataFlow
 					// Compute the dataflow state at the beginning of this block.
 					TValue currentState = lattice.Top;
 					foreach (var predecessor in cfg.GetPredecessors (block)) {
-						TValue predecessorState = cfgState.Get (predecessor.Block).Current;
+						TValue predecessorState = cfgState.Get (predecessor.Block, predecessor.IsConditional).Current;
 
 						// Propagate state through all finally blocks.
 						foreach (var exitedFinally in predecessor.FinallyRegions) {
@@ -232,7 +309,7 @@ namespace ILLink.Shared.DataFlow
 								changed = true;
 
 							TBlock lastFinallyBlock = cfg.LastBlock (exitedFinally);
-							predecessorState = cfgState.Get (lastFinallyBlock).Current;
+							predecessorState = cfgState.Get (lastFinallyBlock, isConditional: false).Current;
 						}
 
 						currentState = lattice.Meet (currentState, predecessorState);
@@ -265,7 +342,7 @@ namespace ILLink.Shared.DataFlow
 						// Using predecessors in the finally. But not from outside the finally.
 						exceptionFinallyState = lattice.Top;
 						foreach (var predecessor in cfg.GetPredecessors (block)) {
-							var isPredecessorInFinally = cfgState.TryGetExceptionFinallyState (predecessor.Block, out TValue predecessorFinallyState);
+							var isPredecessorInFinally = cfgState.TryGetExceptionFinallyState (predecessor.Block, predecessor.IsConditional, out TValue predecessorFinallyState);
 							Debug.Assert (isPredecessorInFinally);
 							exceptionFinallyState = lattice.Meet (exceptionFinallyState.Value, predecessorFinallyState);
 						}
@@ -285,8 +362,7 @@ namespace ILLink.Shared.DataFlow
 					// Initialize the exception state at the start of try/catch regions. Control flow edges from predecessors
 					// within the same try or catch region don't need to be handled here because the transfer functions update
 					// the exception state to reflect every operation in the region.
-					TState currentBlockState = cfgState.Get (block);
-					Box<TValue>? exceptionState = currentBlockState.Exception;
+					cfgState.TryGetExceptionState (block, out Box<TValue>? exceptionState);
 					TValue? oldExceptionState = exceptionState?.Value;
 					if (isTryStart || isCatchOrFilterStart) {
 						// Catch/filter regions get the initial state from the exception state of the corresponding try region.
@@ -309,25 +385,63 @@ namespace ILLink.Shared.DataFlow
 
 					state.Current = currentState;
 					state.Exception = exceptionState;
-					transfer.Transfer (block, state);
+					transfer.Transfer (block, state, out TState? fallThrough, out TState? conditional);
 
-					if (!changed && !cfgState.Get (block).Current.Equals (state.Current))
-						changed = true;
+					// Must be careful to only request the conditional/fallthrough state if they are needed.
+					if (fallThrough != null) {
+						var fallThroughState = cfgState.Get (block, isConditional: false);
+						if (!changed && !fallThroughState.Current.Equals (fallThrough.Current))
+							changed = true;
+						fallThroughState.Current = fallThrough.Current;
+						Debug.Assert (fallThroughState.Exception == fallThrough.Exception);
+					}
 
-					cfgState.Get (block).Current = state.Current;
-					Debug.Assert (cfgState.Get (block).Exception == state.Exception);
+					if (conditional != null) {
+						var conditionalState = cfgState.Get (block, isConditional: true);
+						if (!changed && !conditionalState.Current.Equals (conditional.Current))
+							changed = true;
+						conditionalState.Current = conditional.Current;
+						Debug.Assert (conditionalState.Exception == conditional.Exception);
+					}
 
-					if (cfgState.TryGetExceptionFinallyState (block, out TValue oldFinallyState)) {
+					bool isInFinally  = cfgState.TryGetExceptionFinallyState (block, isConditional: true, out TValue oldFinallyStateConditional);
+					bool isInFinallyFallThrough = cfgState.TryGetExceptionFinallyState (block, isConditional: false, out TValue oldFinallyStateFallThrough);
+					Debug.Assert (isInFinally == isInFinallyFallThrough);
+					// Debug.Assert (oldFinallyStateConditional = oldFinallyStateFalThrough);
+
+					if (isInFinally) {
 						// Independently apply transfer functions for the exception finally state in finally regions.
 						finallyState.Current = exceptionFinallyState!.Value;
 						finallyState.Exception = exceptionState;
-						transfer.Transfer (block, finallyState);
+						transfer.Transfer (block, finallyState, out TState? fallThroughFinally, out TState? conditionalFinally);
 
-						if (!changed && !oldFinallyState.Equals (finallyState.Current))
-							changed = true;
+						if (fallThroughFinally != null) {
+							var gotFinally = cfgState.TryGetExceptionFinallyState (block, isConditional: false, out TValue oldFinallyState);
+							Debug.Assert (gotFinally);
+							if (!changed && !oldFinallyState.Equals (fallThroughFinally.Current)) {
 
-						Debug.Assert (cfgState.Get (block).Exception == state.Exception);
-						cfgState.SetExceptionFinallyState (block, finallyState.Current);
+								if (oldFinallyState is ILLink.RoslynAnalyzer.DataFlow.LocalContextState<ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>, ILLink.RoslynAnalyzer.DataFlow.FeatureContext> oldV &&
+									fallThroughFinally.Current is ILLink.RoslynAnalyzer.DataFlow.LocalContextState<ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>, ILLink.RoslynAnalyzer.DataFlow.FeatureContext> newV) {
+										Console.WriteLine("Hi");
+									}
+								changed = true;
+							}
+							// oldFinallyState.Current = fallThroughFinally.Current;
+							cfgState.SetExceptionFinallyState (block, isConditional: false, fallThroughFinally.Current);
+							// Debug.Assert (oldFinallyState.Exception == fallThroughFinally.Exception);
+
+							Debug.Assert (cfgState.Get (block, isConditional: false).Exception == fallThroughFinally.Exception);
+						}
+						if (conditionalFinally != null) {
+							var gotFinally = cfgState.TryGetExceptionFinallyState (block, isConditional: true, out TValue oldFinallyState);
+							if (!changed && !oldFinallyState.Equals (conditionalFinally.Current))
+								changed = true;
+							// oldFinallyState.Current = conditionalFinally.Current;
+							cfgState.SetExceptionFinallyState (block, isConditional: true, conditionalFinally.Current);
+							// Debug.Assert (oldFinallyState.Exception == conditionalFinally.Exception);
+
+							Debug.Assert (cfgState.Get (block, isConditional: true).Exception == conditionalFinally.Exception);
+						}
 					}
 
 					// Either the normal transfer or the finally transfer might change
@@ -349,6 +463,7 @@ namespace ILLink.Shared.DataFlow
 
 					TraceBlockOutput (state.Current, exceptionState?.Value, exceptionFinallyState);
 				}
+				iteration++;
 			}
 		}
 	}

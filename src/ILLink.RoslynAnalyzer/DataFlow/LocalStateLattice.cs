@@ -73,8 +73,12 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 		public readonly DictionaryLattice<LocalKey, TValue, TValueLattice> Lattice;
 		public readonly DictionaryLattice<CaptureId, CapturedReferenceValue, CapturedReferenceLattice> CapturedReferenceLattice;
 
+		static bool created = false;
 		public LocalStateLattice (TValueLattice valueLattice)
 		{
+			// if (created)
+				// throw new InvalidOperationException ();
+			created = true;
 			Lattice = new DictionaryLattice<LocalKey, TValue, TValueLattice> (valueLattice);
 			CapturedReferenceLattice = new DictionaryLattice<CaptureId, CapturedReferenceValue, CapturedReferenceLattice> (new CapturedReferenceLattice ());
 			Top = new (Lattice.Top);

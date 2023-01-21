@@ -19,14 +19,19 @@ using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.Single
 
 namespace ILLink.RoslynAnalyzer.TrimAnalysis
 {
-	public class TrimDataFlowAnalysis : LocalDataFlowAnalysis<MultiValue, FeatureContext, ValueSetLattice<SingleValue>, FeatureContextLattice, TrimAnalysisVisitor>
+	public class TrimDataFlowAnalysis : LocalDataFlowAnalysis<
+		MultiValue,
+		FeatureContext,
+		ValueSetLattice<SingleValue>,
+		FeatureContextLattice,
+		TrimAnalysisVisitor>
 	{
 		public TrimAnalysisPatternStore TrimAnalysisPatterns { get; }
 
 		public TrimDataFlowAnalysis (OperationBlockAnalysisContext context, IOperation operationBlock)
 			: base (context, operationBlock)
 		{
-			TrimAnalysisPatterns = new TrimAnalysisPatternStore (Lattice.LocalStateLattice.Lattice.ValueLattice);
+			TrimAnalysisPatterns = new TrimAnalysisPatternStore (lattice.LocalStateLattice.Lattice.ValueLattice);
 		}
 
 		protected override TrimAnalysisVisitor GetVisitor (
@@ -34,17 +39,17 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			ControlFlowGraph methodCFG,
 			ImmutableDictionary<CaptureId, FlowCaptureKind> lValueFlowCaptures,
 			InterproceduralState<MultiValue, ValueSetLattice<SingleValue>> interproceduralState)
-		 => new (Lattice, method, methodCFG, lValueFlowCaptures, TrimAnalysisPatterns, interproceduralState);
+		 => new (lattice, method, methodCFG, lValueFlowCaptures, TrimAnalysisPatterns, interproceduralState);
 
 #if DEBUG
 #pragma warning disable CA1805 // Do not initialize unnecessarily
 		// Set this to a method name to trace the analysis of the method.
-		readonly string? traceMethod = null;
+		readonly string? traceMethod = "TryFlowsToAfterFinally";
 
 		bool trace = false;
 
 		// Set this to true to print out the dataflow states encountered during the analysis.
-		readonly bool showStates = false;
+		readonly bool showStates = true;
 
 		static readonly TracingType tracingMechanism = Debugger.IsAttached ? TracingType.Debug : TracingType.Console;
 #pragma warning restore CA1805 // Do not initialize unnecessarily
@@ -74,6 +79,8 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 
 			if (methodName?.Equals (traceMethod) == true)
 				trace = true;
+			if (trace)
+				TraceWriteLine("Tracing method " + methodName);
 		}
 
 		public override void TraceVisitBlock (BlockProxy block)
@@ -84,6 +91,8 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
 			TraceWrite ("block " + block.Block.Ordinal + ": ");
 			if (block.Block.Operations.FirstOrDefault () is IOperation firstBlockOp) {
 				TraceWriteLine (firstBlockOp.Syntax.ToString ());
+				if (firstBlockOp.Syntax.ToString() == "_switchOnField")
+					Console.WriteLine("Hey");
 			} else if (block.Block.BranchValue is IOperation branchOp) {
 				TraceWriteLine (branchOp.Syntax.ToString ());
 			} else {

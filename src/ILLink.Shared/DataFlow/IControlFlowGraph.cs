@@ -33,9 +33,10 @@ namespace ILLink.Shared.DataFlow
 		{
 			public readonly TBlock Block;
 			public readonly ImmutableArray<TRegion> FinallyRegions;
-			public Predecessor (TBlock block, ImmutableArray<TRegion> finallyRegions)
+			public readonly bool IsConditional;
+			public Predecessor (TBlock block, ImmutableArray<TRegion> finallyRegions, bool isConditional)
 			{
-				(Block, FinallyRegions) = (block, finallyRegions);
+				(Block, FinallyRegions, IsConditional) = (block, finallyRegions, isConditional);
 			}
 		}
 

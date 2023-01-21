@@ -143,7 +143,7 @@ namespace ILLink.Shared.DataFlow
 				? valuesSet.Contains (value)
 				: EqualityComparer<TValue>.Default.Equals (value, (TValue) _values);
 
-		internal static ValueSet<TValue> Meet (ValueSet<TValue> left, ValueSet<TValue> right)
+		internal static ValueSet<TValue> Union (ValueSet<TValue> left, ValueSet<TValue> right)
 		{
 			if (left._values == null)
 				return right.Clone ();
@@ -158,6 +158,24 @@ namespace ILLink.Shared.DataFlow
 
 			var values = new EnumerableValues (left.Clone ());
 			values.UnionWith (right.Clone ());
+			return new ValueSet<TValue> (values);
+		}
+
+		internal static ValueSet<TValue> Intersection (ValueSet<TValue> left, ValueSet<TValue> right)
+		{
+			if (left._values == null)
+				return left;
+			if (right._values == null)
+				return right;
+			
+			if (left._values is not EnumerableValues)
+				return right.Contains ((TValue) left._values) ? left.Clone () : new ValueSet<TValue> ();
+
+			if (right._values is not EnumerableValues)
+				return left.Contains ((TValue) right._values) ? right.Clone () : new ValueSet<TValue> ();
+
+			var values = new EnumerableValues (left.Clone ());
+			values.IntersectWith (right.Clone ());
 			return new ValueSet<TValue> (values);
 		}
 

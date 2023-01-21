@@ -18,8 +18,12 @@ namespace ILLink.Shared.DataFlow
 
 		public DefaultValueDictionary<TKey, TValue> Top { get; }
 
+		static bool created = false;
 		public DictionaryLattice (TValueLattice valueLattice)
 		{
+			// if (created)
+				// throw new InvalidOperationException ();
+			created = true;
 			ValueLattice = valueLattice;
 			Top = new DefaultValueDictionary<TKey, TValue> (valueLattice.Top);
 		}

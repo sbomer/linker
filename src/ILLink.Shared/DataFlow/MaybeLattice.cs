@@ -33,8 +33,13 @@ namespace ILLink.Shared.DataFlow
 		where TValueLattice : ILattice<T>
 	{
 		public readonly TValueLattice ValueLattice;
+
+		static bool created = false;
 		public MaybeLattice (TValueLattice valueLattice)
 		{
+			// if (created)
+				// throw new InvalidOperationException ();
+			created = true;
 			ValueLattice = valueLattice;
 			Top = default;
 		}

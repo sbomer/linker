@@ -85,15 +85,23 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 
 		public readonly DictionaryLattice<LocalKey, Maybe<TValue>, MaybeLattice<TValue, TValueLattice>> HoistedLocalLattice;
 
+		static bool created = false;
 		public InterproceduralStateLattice (
 			ValueSetLattice<MethodBodyValue> methodLattice,
 			DictionaryLattice<LocalKey, Maybe<TValue>, MaybeLattice<TValue, TValueLattice>> hoistedLocalLattice
 		)
 		{
+			// if (created)
+				// throw new InvalidOperationException ();
+			created = true;
 			MethodLattice = methodLattice;
 			HoistedLocalLattice = hoistedLocalLattice;
+			// Top = new (MethodLattice.Top, HoistedLocalLattice.Top, this);
 		}
 
+		// public InterproceduralState<TValue, TValueLattice> Top { get; }
+		// TODO: find a way to make this a field, without
+		// recursive structs
 		public InterproceduralState<TValue, TValueLattice> Top => new (MethodLattice.Top,
 			HoistedLocalLattice.Top, this);
 

@@ -40,7 +40,16 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 
 	public struct CapturedReferenceLattice : ILattice<CapturedReferenceValue>
 	{
-		public CapturedReferenceValue Top => new CapturedReferenceValue ();
+		static bool created = false;
+		public CapturedReferenceLattice ()
+		{
+			// if (created)
+				// throw new InvalidOperationException ();
+			created = true;
+			Top = new CapturedReferenceValue ();
+		}
+
+		public CapturedReferenceValue Top { get; }
 
 		public CapturedReferenceValue Meet (CapturedReferenceValue left, CapturedReferenceValue right)
 		{

@@ -89,12 +89,21 @@ namespace Mono.Linker.Dataflow
 		public readonly DictionaryLattice<HoistedLocalKey, MultiValue, ValueSetLattice<SingleValue>> HoistedLocalsLattice;
 		public readonly LinkContext Context;
 
+		static bool created = false;
+
 		public InterproceduralStateLattice (
 			ValueSetLattice<MethodIL> methodBodyLattice,
 			DictionaryLattice<HoistedLocalKey, MultiValue, ValueSetLattice<SingleValue>> hoistedLocalsLattice,
-			LinkContext context)
-			=> (MethodBodyLattice, HoistedLocalsLattice, Context) = (methodBodyLattice, hoistedLocalsLattice, context);
-
+			LinkContext context) {
+			// if (created)
+				// throw new InvalidOperationException ();
+			created = true;
+			(MethodBodyLattice, HoistedLocalsLattice, Context) = (methodBodyLattice, hoistedLocalsLattice, context);
+			// Top = new InterproceduralState (MethodBodyLattice.Top, HoistedLocalsLattice.Top, this);
+		}
+		
+		// TODO: make it field without causing struct cycle?
+		// public InterproceduralState Top { get; }
 		public InterproceduralState Top => new InterproceduralState (MethodBodyLattice.Top, HoistedLocalsLattice.Top, this);
 
 		public InterproceduralState Meet (InterproceduralState left, InterproceduralState right)

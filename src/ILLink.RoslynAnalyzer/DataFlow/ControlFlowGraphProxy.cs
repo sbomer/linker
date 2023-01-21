@@ -57,7 +57,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 		{
 			foreach (var predecessor in block.Block.Predecessors) {
 				if (predecessor.FinallyRegions.IsEmpty) {
-					yield return new Predecessor (new BlockProxy (predecessor.Source), ImmutableArray<RegionProxy>.Empty);
+					yield return new Predecessor (new BlockProxy (predecessor.Source), ImmutableArray<RegionProxy>.Empty, predecessor.IsConditionalSuccessor);
 					continue;
 				}
 				var finallyRegions = ImmutableArray.CreateBuilder<RegionProxy> ();
@@ -66,7 +66,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 						throw new InvalidOperationException ();
 					finallyRegions.Add (new RegionProxy (region));
 				}
-				yield return new Predecessor (new BlockProxy (predecessor.Source), finallyRegions.ToImmutable ());
+				yield return new Predecessor (new BlockProxy (predecessor.Source), finallyRegions.ToImmutable (), predecessor.IsConditionalSuccessor);
 			}
 		}
 

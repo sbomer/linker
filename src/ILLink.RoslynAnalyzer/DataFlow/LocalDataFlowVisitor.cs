@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using ILLink.Shared.DataFlow;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FlowAnalysis;
@@ -15,8 +16,13 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 	// - field
 	// - parameter
 	// - method return
-	public abstract class LocalDataFlowVisitor<TValue, TContext, TValueLattice, TContextLattice> : OperationWalker<LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice>, TValue>,
-		ITransfer<BlockProxy, LocalContextState<TValue, TContext>, LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice>, LocalContextLattice<TValue, TContext, TValueLattice, TContextLattice>>
+	public abstract class LocalDataFlowVisitor<TValue, TContext, TValueLattice, TContextLattice>
+		: OperationWalker<LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice>, TValue>,
+		ITransfer<
+			BlockProxy,
+			LocalContextState<TValue, TContext>,
+			LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice>,
+			LocalContextLattice<TValue, TContext, TValueLattice, TContextLattice>>
 		// This struct constraint prevents warnings due to possible null returns from the visitor methods.
 		// Note that this assumes that default(TValue) is equal to the TopValue.
 		where TValue : struct, IEquatable<TValue>
@@ -59,28 +65,68 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			InterproceduralState = interproceduralState;
 		}
 
-		public void Transfer (BlockProxy block, LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice> state)
+		public void Transfer (
+			BlockProxy block,
+			// TODO: abbreviate types?
+			LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice> state,
+			out LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice>? fallThrough,
+			out LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice>? conditional)
 		{
 			foreach (IOperation operation in block.Block.Operations)
 				Visit (operation, state);
 
 			// Blocks may end with a BranchValue computation. Visit the BranchValue operation after all others.
 			IOperation? branchValueOperation = block.Block.BranchValue;
-			if (branchValueOperation == null)
+			if (branchValueOperation == null) {
+				// No branch. Return a fall-through value.
+				// TODO: probably not necessary for the exit block...
+				fallThrough = state;
+				conditional = null;
 				return;
+			}
 
 			var branchValue = Visit (branchValueOperation, state);
 
 			// BranchValue may represent a value used in a conditional branch to the ConditionalSuccessor - if so, we are done.
-			if (block.Block.ConditionKind != ControlFlowConditionKind.None)
+			if (block.Block.ConditionKind != ControlFlowConditionKind.None) {
+				// Conditional branch. Check if this is a supported context check:
+				if (!TryGetBranchValueContext (branchValueOperation, state, out TContext? branchValueContext)) {
+					// TODO: state sharing???
+					conditional = state;
+					fallThrough = state;
+					return;
+				}
+
+				// This is a context check. Return a state with a context matching the context check.
+				if (block.Block.ConditionKind == ControlFlowConditionKind.WhenTrue) {
+					// ConditionalSuccessor is the true branch.
+					conditional = new LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice> {
+						// TODO: state sharing? what if state has references that don't get copied?
+						Current = state.Current with { Context = branchValueContext.Value }
+					};
+					// TODO: should this negate, rather than leaving feature context as before?
+					fallThrough = state;
+				} else {
+					// ConditionalSuccessor is the false branch.
+					fallThrough = new LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice> {
+						Current = state.Current with { Context = branchValueContext.Value }
+					};
+					// TODO: should this negate, rather than leaving feature context as before?
+					conditional = state;
+				}
 				return;
+			}
 
 			// If not, the BranchValue represents a return or throw value associated with the FallThroughSuccessor of this block.
 			// (ConditionalSuccessor == null iff ConditionKind == None).
 
 			// The BranchValue for a thrown value is not involved in dataflow tracking.
-			if (block.Block.FallThroughSuccessor?.Semantics == ControlFlowBranchSemantics.Throw)
+			if (block.Block.FallThroughSuccessor?.Semantics == ControlFlowBranchSemantics.Throw) {
+				// TODO: state sharing???
+				conditional = state;
+				fallThrough = state;
 				return;
+			}
 
 			// Return statements with return values are represented in the control flow graph as
 			// a branch value operation that computes the return value.
@@ -88,7 +134,12 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			// Use the branch value operation as the key for the warning store and the location of the warning.
 			// We don't want the return operation because this might have multiple possible return values in general.
 			HandleReturnValue (branchValue, branchValueOperation);
+			// TODO: state sharing???
+			conditional = state;
+			fallThrough = state;
 		}
+
+		public abstract bool TryGetBranchValueContext (IOperation branchValueOperation, LocalDataFlowState<TValue, TContext, TValueLattice, TContextLattice> state, [NotNullWhen (true)] out TContext? branchValueContext);
 
 		public abstract TValue GetFieldTargetValue (IFieldSymbol field);
 

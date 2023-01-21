@@ -31,15 +31,24 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 		where TContextLattice : ILattice<TContext>, new()
 		where TTransfer : LocalDataFlowVisitor<TValue, TContext, TLattice, TContextLattice>
 	{
-		protected readonly LocalContextLattice<TValue, TContext, TLattice, TContextLattice> Lattice;
-
 		protected readonly OperationBlockAnalysisContext Context;
 
 		readonly IOperation OperationBlock;
 
-		protected LocalDataFlowAnalysis (OperationBlockAnalysisContext context, IOperation operationBlock)
+		private static LocalContextLattice<TValue, TContext, TLattice, TContextLattice> GetLatticeAndEntryValue(out LocalContextState<TValue, TContext> entryValue)
 		{
-			Lattice = new (new (new TLattice ()), new TContextLattice ());
+			LocalContextLattice<TValue, TContext, TLattice, TContextLattice> lattice = new (new (new TLattice ()), new TContextLattice ());
+			// TODO: use new() constraint everywhere that a lattice type parameter is required
+			// to enforce that the substituted type can be created out of thin air.
+			// TODO: add a static member to each lattice type to ensure that it is only ever
+			// constructed once.
+			entryValue = lattice.Top;
+			return lattice;
+		}
+
+		protected LocalDataFlowAnalysis (OperationBlockAnalysisContext context, IOperation operationBlock)
+			: base (GetLatticeAndEntryValue (out var entryValue), entryValue)
+		{
 			Context = context;
 			OperationBlock = operationBlock;
 		}
@@ -78,7 +87,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 			var cfg = method.ControlFlowGraph;
 			var lValueFlowCaptures = LValueFlowCapturesProvider.CreateLValueFlowCaptures (cfg);
 			var visitor = GetVisitor (method.Method, cfg, lValueFlowCaptures, interproceduralState);
-			Fixpoint (new ControlFlowGraphProxy (cfg), Lattice, visitor);
+			Fixpoint (new ControlFlowGraphProxy (cfg), visitor);
 
 			// The interprocedural state struct is stored as a field of the visitor and modified
 			// in-place there, but we also need those modifications to be reflected here.
