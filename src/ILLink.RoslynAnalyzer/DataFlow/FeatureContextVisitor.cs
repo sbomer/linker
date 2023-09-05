@@ -33,5 +33,13 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 
             // TODO: should result be impacted by the input context?
 		}
+		public override FeatureContext? VisitPropertyReference (IPropertyReferenceOperation operation, FeatureContext argument)
+		{
+			var property = operation.Property;
+			if (property.Name == "IsDynamicCodeSupported" && property.ContainingType is INamedTypeSymbol type && type.HasName ("System.Runtime.CompilerServices.RuntimeFeature"))
+				return new FeatureContext (new ValueSet<string> ("DynamicCode"));
+
+			return null;
+		}
 	}
 }
